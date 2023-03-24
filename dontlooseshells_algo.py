@@ -18,9 +18,6 @@ class Logger:
             self.local_logs = {}
 
 
-    #def print(self, *objects: Any, sep: str = " ", end: str = "\n") -> None:
-    #    self.logs += sep.join(map(str, objects)) + end
-
     def print(self, *objects: Any, sep: str = " ", end: str = "\n") -> None:
         self.logs += sep.join(map(str, objects)) + end
 

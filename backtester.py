@@ -95,7 +95,7 @@ current_limits = {
 
 # Setting a high time_limit can be harder to visualize
 # print_position prints the position before! every Trader.run
-def simulate_alternative(round: int, day: int, trader, print_position=False, time_limit=999900):
+def simulate_alternative(round: int, day: int, trader, print_position=False, time_limit=999900, end_liquidation=True):
     prices_path = f"{TRAINING_DATA_PREFIX}/prices_round_{round}_day_{day}.csv"
     trades_path = f"{TRAINING_DATA_PREFIX}/trades_round_{round}_day_{day}_nn.csv"
     df_prices = pd.read_csv(prices_path, sep=';')
@@ -140,7 +140,8 @@ def simulate_alternative(round: int, day: int, trader, print_position=False, tim
                 states[time + TIME_DELTA].own_trades = grouped_by_symbol
         if time == max_time:
             print("End of simulation reached. All positions left are liquidated")
-            liquidate_leftovers(position, profits_by_symbol, state, time)
+            if end_liquidation: 
+                liquidate_leftovers(position, profits_by_symbol, state, time)
         if states.get(time + TIME_DELTA) != None:
             states[time + TIME_DELTA].position = copy.deepcopy(position)
     create_log_file(states, day, profits_by_symbol, trader)
