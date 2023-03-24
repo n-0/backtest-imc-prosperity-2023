@@ -230,7 +230,7 @@ log_header = [
 
 def create_log_file(states: dict[int, TradingState], day, profits: dict[int, dict[str, float]], trader: Trader):
     file_name = uuid.uuid4()
-    with open(f'{file_name}.log', 'w', encoding="utf-8") as f:
+    with open(f'{file_name}.log', 'w', encoding="utf-8", newline='\n') as f:
         f.writelines(log_header)
         csv_rows = []
         f.write('\n')
