@@ -220,11 +220,12 @@ def clear_order_book(trader_orders: dict[str, List[Order]], order_depth: dict[st
         return trades
                             
 csv_header = "day;timestamp;product;bid_price_1;bid_volume_1;bid_price_2;bid_volume_2;bid_price_3;bid_volume_3;ask_price_1;ask_volume_1;ask_price_2;ask_volume_2;ask_price_3;ask_volume_3;mid_price;profit_and_loss"
-log_header = ['Sandbox logs:\n', 
-              '0 OpenBLAS WARNING - could not determine the L2 cache size on this system, assuming 256k\n', 
-              'START RequestId: fcc44f9f-1aef-4542-ac1f-f2d79914f659 Version: $LATEST\n',
-              'END RequestId: fcc44f9f-1aef-4542-ac1f-f2d79914f659\n',
-              'REPORT RequestId: fcc44f9f-1aef-4542-ac1f-f2d79914f659	Duration: 21.16 ms	Billed Duration: 22 ms	Memory Size: 128 MB	Max Memory Used: 66 MB	Init Duration: 601.84 ms\n'
+log_header = [
+    'Sandbox logs:\n',
+    '0 OpenBLAS WARNING - could not determine the L2 cache size on this system, assuming 256k\n',
+    'START RequestId: 8ab36ff8-b4e6-42d4-b012-e6ad69c42085 Version: $LATEST\n',
+    'END RequestId: 8ab36ff8-b4e6-42d4-b012-e6ad69c42085\n',
+    'REPORT RequestId: 8ab36ff8-b4e6-42d4-b012-e6ad69c42085	Duration: 18.73 ms	Billed Duration: 19 ms	Memory Size: 128 MB	Max Memory Used: 94 MB	Init Duration: 1574.09 ms\n',
 ]
 
 def create_log_file(states: dict[int, TradingState], day, profits: dict[int, dict[str, float]], trader: Trader):
@@ -232,7 +233,7 @@ def create_log_file(states: dict[int, TradingState], day, profits: dict[int, dic
     with open(f'{file_name}.log', 'w', encoding="utf-8") as f:
         f.writelines(log_header)
         csv_rows = []
-        f.write('\n\n')
+        f.write('\n')
         for time, state in states.items():
             if trader.__getattribute__('logger') != None:
                 if trader.logger.__getattribute__('local_logs') != None:
@@ -243,7 +244,7 @@ def create_log_file(states: dict[int, TradingState], day, profits: dict[int, dic
                 f.write(f'{time}\n')
 
         f.write(f'\n\n')
-        f.write('Submission logs:\n\n\n')
+        f.write('Submission logs:\n\n\n\n')
         f.write('Activities log:\n')
         f.write(csv_header)
         for time, state in states.items():
