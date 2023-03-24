@@ -1,7 +1,8 @@
-from dontlooseshells_algo import Trader
+from round2_algo import Trader
 
 from datamodel import *
 from typing import Any
+import numpy as np
 import pandas as pd
 import statistics
 import copy
@@ -31,6 +32,15 @@ def process_prices(df_prices, time_limit) -> dict[int, TradingState]:
 
         states[time].listings[product] = Listing(product, product, product)
         depth = OrderDepth()
+        """
+        for i in range(1, 4):
+            try:
+                if row[f'bid_volume_{i}'].isna():
+                    print(f'Invalid volume {i} for time {time}')
+            except:
+                continue
+
+        """
         if row["bid_price_1"]> 0:
             depth.buy_orders[row["bid_price_1"]] = int(row["bid_volume_1"])
         if row["bid_price_2"]> 0:
@@ -84,13 +94,19 @@ def simulate_alternative(round: int, day: int, trader, time_limit=999900):
     states = process_prices(df_prices, time_limit)
     process_trades(df_trades, states, time_limit)
     position = copy.copy(states[0].position)
+    ref_symbols = list(states[0].position.keys())
+    profits_by_symbol: dict[int, dict[str, float]] = { 0: dict(zip(ref_symbols, [0.0]*len(ref_symbols))) }
+    max_time = max(list(states.keys()))
     for time, state in states.items():
-        position = copy.copy(state.position)
+        position = copy.deepcopy(state.position)
         orders = trader.run(state)
         trades = clear_order_book(orders, state.order_depths, time)
+        if profits_by_symbol.get(time + TIME_DELTA) == None and time != max_time:
+            profits_by_symbol[time + TIME_DELTA] = copy.deepcopy(profits_by_symbol[time])
         if len(trades) > 0:
             grouped_by_symbol = {}
             for trade in trades:
+                current_pnl = profits_by_symbol[time][trade.symbol]
                 if grouped_by_symbol.get(trade.symbol) == None:
                     grouped_by_symbol[trade.symbol] = []
                 n_position = position[trade.symbol] + trade.quantity 
@@ -98,12 +114,47 @@ def simulate_alternative(round: int, day: int, trader, time_limit=999900):
                     print("ILLEGAL TRADE, WOULD EXCEED POSITION LIMIT, KILLING ALL REMAINING ORDERS")
                     break
                 position[trade.symbol] = n_position
-                grouped_by_symbol[trade.symbol].append(trade)
+                current_pnl += -trade.price * trade.quantity
+                if states.get(time + TIME_DELTA) != None:
+                    profits_by_symbol[time + TIME_DELTA][trade.symbol] = current_pnl
             if states.get(time + TIME_DELTA) != None:
                 states[time + TIME_DELTA].own_trades = grouped_by_symbol
+        if time == max_time:
+            print("End of simulation reached. All positions left are liquidated")
+            liquidated_position = copy.deepcopy(position)
+            for symbol in position.keys():
+                if liquidated_position[symbol] != 0:
+                    if liquidated_position[symbol] > 0:
+                        sorted_sell_prices = list(state.order_depths[symbol].sell_orders.keys())
+                        sorted_sell_prices.sort(reverse=True)
+                        for ask_order_price in sorted_sell_prices:
+                            if abs(liquidated_position[symbol]) <= abs(state.order_depths[symbol].sell_orders[ask_order_price]):
+                                profits_by_symbol[time][symbol] += ask_order_price*liquidated_position[symbol]
+                                liquidated_position[symbol] = 0
+                                break
+                            else:
+                                profits_by_symbol[time][symbol] += ask_order_price*state.order_depths[symbol].sell_orders[ask_order_price]
+                                liquidated_position[symbol] -= state.order_depths[symbol].sell_orders[ask_order_price]
+                        if liquidated_position[symbol] > 0:
+                            print(f'Unable to liquidate all LONG positions for {symbol}, left with {liquidated_position[symbol]}')
+                    else:
+                        sorted_buy_prices = list(state.order_depths[symbol].buy_orders.keys())
+                        sorted_buy_prices.sort(reverse=True)
+                        for buy_order_price in sorted_buy_prices:
+                            if abs(liquidated_position[symbol]) <= abs(state.order_depths[symbol].buy_orders[buy_order_price]):
+                                profits_by_symbol[time][symbol] -= buy_order_price*liquidated_position[symbol]
+                                liquidated_position[symbol] = 0
+                                break
+                            else:
+                                profits_by_symbol[time][symbol] -= buy_order_price*state.order_depths[symbol].buy_orders[buy_order_price]
+                                liquidated_position[symbol] += state.order_depths[symbol].buy_orders[buy_order_price]
+                        if liquidated_position[symbol] < 0:
+                            print(f'Unable to liquidate all SHORT positions for {symbol}, left with {liquidated_position[symbol]}')
+                position = liquidated_position
         if states.get(time + TIME_DELTA) != None:
-            states[time + TIME_DELTA].position = position
-    create_log_file(states, day, trader) 
+            states[time + TIME_DELTA].position = copy.deepcopy(position)
+        print(position)
+    create_log_file(states, day, profits_by_symbol, trader)
 
 def cleanup_order_volumes(org_orders: List[Order]) -> List[Order]:
     orders = copy.deepcopy(org_orders)
@@ -154,7 +205,7 @@ log_header = ['Sandbox logs:\n',
               'REPORT RequestId: fcc44f9f-1aef-4542-ac1f-f2d79914f659	Duration: 21.16 ms	Billed Duration: 22 ms	Memory Size: 128 MB	Max Memory Used: 66 MB	Init Duration: 601.84 ms\n'
 ]
 
-def create_log_file(states: dict[int, TradingState], day, trader: Trader):
+def create_log_file(states: dict[int, TradingState], day, profits: dict[int, dict[str, float]], trader: Trader):
     file_name = uuid.uuid4()
     with open(f'{file_name}.log', 'w', encoding="utf-8") as f:
         f.writelines(log_header)
@@ -200,10 +251,10 @@ def create_log_file(states: dict[int, TradingState], day, trader: Trader):
                     f.write(f'{asks[0][0]};{asks[0][1]};;;;;')
                 else:
                     f.write(f';;;;;;')
-                f.write(f'{statistics.median(asks_prices + bids_prices)};0.0\n')
+                f.write(f'{statistics.median(asks_prices + bids_prices)};{profits[time][symbol]}\n')
 
 
 # Adjust accordingly the round and day to your needs
 if __name__ == "__main__":
     trader = Trader()
-    simulate_alternative(2, 0, trader, 20100)
+    simulate_alternative(2, 0, trader, 10000)

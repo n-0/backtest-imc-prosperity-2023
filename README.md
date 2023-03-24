@@ -9,6 +9,6 @@ The profit calculation doesn't work yet.
 Though the format is good enough
 to be accepted by jmerle's amazing [project](https://github.com/jmerle/imc-prosperity-visualizer),
 for visualizing the order book as well as your trades.
-Check out [dontlooseshells.py](./backtester.py) on how to update your logger class to work with this repo.
+Check out [dontlooseshells.py](./dontlooseshells.py) on how to update your logger class to work with this repo.
 
 Good luck 🍀
