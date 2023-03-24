@@ -3,20 +3,16 @@ from datamodel import Order, ProsperityEncoder, Symbol, TradingState
 from typing import Any
 
 class Logger:
-
     # Set this to true, if u want to create
     # local logs
     local: bool 
     # this is used as a buffer for logs
     # instead of stdout
-    local_logs: dict[int, str] 
+    local_logs: dict[int, str] = {}
 
     def __init__(self, local=False) -> None:
         self.logs = ""
         self.local = local
-        if local:
-            self.local_logs = {}
-
 
     def print(self, *objects: Any, sep: str = " ", end: str = "\n") -> None:
         self.logs += sep.join(map(str, objects)) + end
@@ -29,8 +25,7 @@ class Logger:
         }, cls=ProsperityEncoder, separators=(",", ":"), sort_keys=True)
         if self.local:
             self.local_logs[state.timestamp] = output
-        else:
-            print(output)
+        print(output)
 
         self.logs = ""
 

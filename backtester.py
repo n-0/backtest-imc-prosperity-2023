@@ -235,8 +235,8 @@ def create_log_file(states: dict[int, TradingState], day, profits: dict[int, dic
         csv_rows = []
         f.write('\n')
         for time, state in states.items():
-            if trader.__getattribute__('logger') != None:
-                if trader.logger.__getattribute__('local_logs') != None:
+            if hasattr(trader, 'logger'):
+                if hasattr(trader.logger, 'local_logs') != None:
                     if trader.logger.local_logs.get(time) != None:
                         f.write(f'{time} {trader.logger.local_logs[time]}\n')
                         continue
