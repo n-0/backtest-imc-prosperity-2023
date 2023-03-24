@@ -1,4 +1,4 @@
-from round2_algo import Trader
+from dontlooseshells_algo import Trader
 
 from datamodel import *
 from typing import Any
@@ -13,6 +13,16 @@ TIME_DELTA = 100
 # Please put all! the price and log files into
 # the same directory or adjust the code accordingly
 TRAINING_DATA_PREFIX = "./training"
+
+SYMBOLS = [
+    'PEARLS',
+    'BANANAS',
+    'COCONUTS',
+    'PINA_COLADAS',
+    'DIVING_GEAR',
+    'BERRIES',
+    'DOLPHIN_SIGHTINGS'
+]
 
 def process_prices(df_prices, time_limit) -> dict[int, TradingState]:
     states = {}
@@ -30,17 +40,17 @@ def process_prices(df_prices, time_limit) -> dict[int, TradingState]:
             depths = {}
             states[time] = TradingState(time, listings, depths, own_trades, market_trades, position, observations)
 
-        states[time].listings[product] = Listing(product, product, product)
-        depth = OrderDepth()
-        """
-        for i in range(1, 4):
-            try:
-                if row[f'bid_volume_{i}'].isna():
-                    print(f'Invalid volume {i} for time {time}')
-            except:
-                continue
+        if product not in states[time].position:
+            states[time].position[product] = 0
+            states[time].own_trades[product] = []
+            states[time].market_trades[product] = []
 
-        """
+        states[time].listings[product] = Listing(product, product, "1")
+
+        if product == "DOLPHIN_SIGHTINGS":
+            states[time].observations["DOLPHIN_SIGHTINGS"] = row['mid_price']
+            
+        depth = OrderDepth()
         if row["bid_price_1"]> 0:
             depth.buy_orders[row["bid_price_1"]] = int(row["bid_volume_1"])
         if row["bid_price_2"]> 0:
@@ -55,10 +65,6 @@ def process_prices(df_prices, time_limit) -> dict[int, TradingState]:
             depth.sell_orders[row["ask_price_3"]] = int(row["ask_volume_3"])
         states[time].order_depths[product] = depth
 
-        if product not in states[time].position:
-            states[time].position[product] = 0
-            states[time].own_trades[product] = []
-            states[time].market_trades[product] = []
     return states
 
 def process_trades(df_trades, states: dict[int, TradingState], time_limit):
@@ -82,11 +88,14 @@ current_limits = {
     'PEARLS': 20,
     'BANANAS': 20,
     'COCONUTS': 600,
-    'PINA_COLADAS': 300
+    'PINA_COLADAS': 300,
+    'DIVING_GEAR': 50,
+    'BERRIES': 250,
 }
 
 # Setting a high time_limit can be harder to visualize
-def simulate_alternative(round: int, day: int, trader, time_limit=999900):
+# print_position prints the position before! every Trader.run
+def simulate_alternative(round: int, day: int, trader, print_position=False, time_limit=999900):
     prices_path = f"{TRAINING_DATA_PREFIX}/prices_round_{round}_day_{day}.csv"
     trades_path = f"{TRAINING_DATA_PREFIX}/trades_round_{round}_day_{day}_nn.csv"
     df_prices = pd.read_csv(prices_path, sep=';')
@@ -101,6 +110,8 @@ def simulate_alternative(round: int, day: int, trader, time_limit=999900):
         position = copy.deepcopy(state.position)
         orders = trader.run(state)
         trades = clear_order_book(orders, state.order_depths, time)
+        if print_position:
+            print(position)
         if profits_by_symbol.get(time + TIME_DELTA) == None and time != max_time:
             profits_by_symbol[time + TIME_DELTA] = copy.deepcopy(profits_by_symbol[time])
         if len(trades) > 0:
@@ -111,7 +122,15 @@ def simulate_alternative(round: int, day: int, trader, time_limit=999900):
                     grouped_by_symbol[trade.symbol] = []
                 n_position = position[trade.symbol] + trade.quantity 
                 if abs(n_position) > current_limits[trade.symbol]:
-                    print("ILLEGAL TRADE, WOULD EXCEED POSITION LIMIT, KILLING ALL REMAINING ORDERS")
+                    print('ILLEGAL TRADE, WOULD EXCEED POSITION LIMIT, KILLING ALL REMAINING ORDERS')
+                    trade_vars = vars(trade)
+                    trade_str = ', '.join("%s: %s" % item for item in trade_vars.items())
+                    print(f'Stopped at the following trade: {trade_str}')
+                    print(f"All trades that were sent:")
+                    for trade in trades:
+                        trade_vars = vars(trade)
+                        trades_str = ', '.join("%s: %s" % item for item in trade_vars.items())
+                        print(trades_str)
                     break
                 position[trade.symbol] = n_position
                 current_pnl += -trade.price * trade.quantity
@@ -121,47 +140,49 @@ def simulate_alternative(round: int, day: int, trader, time_limit=999900):
                 states[time + TIME_DELTA].own_trades = grouped_by_symbol
         if time == max_time:
             print("End of simulation reached. All positions left are liquidated")
-            liquidated_position = copy.deepcopy(position)
-            for symbol in position.keys():
-                if liquidated_position[symbol] != 0:
-                    if liquidated_position[symbol] > 0:
-                        sorted_sell_prices = list(state.order_depths[symbol].sell_orders.keys())
-                        sorted_sell_prices.sort(reverse=True)
-                        for ask_order_price in sorted_sell_prices:
-                            if abs(liquidated_position[symbol]) <= abs(state.order_depths[symbol].sell_orders[ask_order_price]):
-                                profits_by_symbol[time][symbol] += ask_order_price*liquidated_position[symbol]
-                                liquidated_position[symbol] = 0
-                                break
-                            else:
-                                profits_by_symbol[time][symbol] += ask_order_price*state.order_depths[symbol].sell_orders[ask_order_price]
-                                liquidated_position[symbol] -= state.order_depths[symbol].sell_orders[ask_order_price]
-                        if liquidated_position[symbol] > 0:
-                            print(f'Unable to liquidate all LONG positions for {symbol}, left with {liquidated_position[symbol]}')
-                    else:
-                        sorted_buy_prices = list(state.order_depths[symbol].buy_orders.keys())
-                        sorted_buy_prices.sort(reverse=True)
-                        for buy_order_price in sorted_buy_prices:
-                            if abs(liquidated_position[symbol]) <= abs(state.order_depths[symbol].buy_orders[buy_order_price]):
-                                profits_by_symbol[time][symbol] -= buy_order_price*liquidated_position[symbol]
-                                liquidated_position[symbol] = 0
-                                break
-                            else:
-                                profits_by_symbol[time][symbol] -= buy_order_price*state.order_depths[symbol].buy_orders[buy_order_price]
-                                liquidated_position[symbol] += state.order_depths[symbol].buy_orders[buy_order_price]
-                        if liquidated_position[symbol] < 0:
-                            print(f'Unable to liquidate all SHORT positions for {symbol}, left with {liquidated_position[symbol]}')
-                position = liquidated_position
+            liquidate_leftovers(position, profits_by_symbol, state, time)
         if states.get(time + TIME_DELTA) != None:
             states[time + TIME_DELTA].position = copy.deepcopy(position)
-        print(position)
     create_log_file(states, day, profits_by_symbol, trader)
 
+def liquidate_leftovers(position: dict[Product, Position], profits_by_symbol: dict[int, dict[str, float]], state: TradingState, time: int):
+        liquidated_position = copy.deepcopy(position)
+        for symbol in position.keys():
+            if liquidated_position[symbol] != 0:
+                if liquidated_position[symbol] > 0:
+                    sorted_sell_prices = list(state.order_depths[symbol].sell_orders.keys())
+                    sorted_sell_prices.sort(reverse=True)
+                    for ask_order_price in sorted_sell_prices:
+                        if abs(liquidated_position[symbol]) <= abs(state.order_depths[symbol].sell_orders[ask_order_price]):
+                            profits_by_symbol[time][symbol] += ask_order_price*liquidated_position[symbol]
+                            liquidated_position[symbol] = 0
+                            break
+                        else:
+                            profits_by_symbol[time][symbol] += ask_order_price*state.order_depths[symbol].sell_orders[ask_order_price]
+                            liquidated_position[symbol] -= state.order_depths[symbol].sell_orders[ask_order_price]
+                    if liquidated_position[symbol] > 0:
+                        print(f'Unable to liquidate all LONG positions for {symbol}, left with {liquidated_position[symbol]}')
+                else:
+                    sorted_buy_prices = list(state.order_depths[symbol].buy_orders.keys())
+                    sorted_buy_prices.sort(reverse=True)
+                    for buy_order_price in sorted_buy_prices:
+                        if abs(liquidated_position[symbol]) <= abs(state.order_depths[symbol].buy_orders[buy_order_price]):
+                            profits_by_symbol[time][symbol] -= buy_order_price*liquidated_position[symbol]
+                            liquidated_position[symbol] = 0
+                            break
+                        else:
+                            profits_by_symbol[time][symbol] -= buy_order_price*state.order_depths[symbol].buy_orders[buy_order_price]
+                            liquidated_position[symbol] += state.order_depths[symbol].buy_orders[buy_order_price]
+                    if liquidated_position[symbol] < 0:
+                        print(f'Unable to liquidate all SHORT positions for {symbol}, left with {liquidated_position[symbol]}')
+            position = liquidated_position
+
 def cleanup_order_volumes(org_orders: List[Order]) -> List[Order]:
-    orders = copy.deepcopy(org_orders)
+    orders = [] #copy.deepcopy(org_orders)
     for order_1 in org_orders:
         final_order = copy.copy(order_1)
         for order_2 in org_orders:
-            if order_1 == order_2:
+            if order_1.price == order_2.price and order_1.quantity == order_2.quantity:
                continue 
             if order_1.price == order_2.price:
                 final_order.quantity += order_2.quantity
@@ -225,7 +246,7 @@ def create_log_file(states: dict[int, TradingState], day, profits: dict[int, dic
         f.write('Activities log:\n')
         f.write(csv_header)
         for time, state in states.items():
-            for symbol in state.order_depths.keys():
+            for symbol in SYMBOLS:
                 f.write(f'{day};{time};{symbol};')
                 bids_length = len(state.order_depths[symbol].buy_orders)
                 bids = list(state.order_depths[symbol].buy_orders.items())
@@ -251,10 +272,20 @@ def create_log_file(states: dict[int, TradingState], day, profits: dict[int, dic
                     f.write(f'{asks[0][0]};{asks[0][1]};;;;;')
                 else:
                     f.write(f';;;;;;')
-                f.write(f'{statistics.median(asks_prices + bids_prices)};{profits[time][symbol]}\n')
+                if len(asks_prices) == 0 or max(bids_prices) == 0:
+                    if symbol == 'DOLPHIN_SIGHTINGS':
+                        dolphin_sightings = state.observations['DOLPHIN_SIGHTINGS']
+                        f.write(f'{dolphin_sightings};{profits[time][symbol]}\n')
+                    else:
+                        f.write(f'{0};{profits[time][symbol]}\n')
+                else:
+                    min_ask = min(asks_prices)
+                    max_bid = max(bids_prices)
+                    median_price = statistics.median([min_ask, max_bid])
+                    f.write(f'{median_price};{profits[time][symbol]}\n')
 
 
 # Adjust accordingly the round and day to your needs
 if __name__ == "__main__":
     trader = Trader()
-    simulate_alternative(2, 0, trader, 10000)
+    simulate_alternative(3, 0, trader, False, 30000)
