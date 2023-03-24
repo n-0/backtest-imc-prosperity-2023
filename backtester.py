@@ -71,8 +71,8 @@ def process_trades(df_trades, states: dict[int, TradingState], time_limit):
 current_limits = {
     'PEARLS': 20,
     'BANANAS': 20,
-    'COCONUTS': 20,
-    'PINA_COLADAS': 20
+    'COCONUTS': 600,
+    'PINA_COLADAS': 300
 }
 
 # Setting a high time_limit can be harder to visualize
