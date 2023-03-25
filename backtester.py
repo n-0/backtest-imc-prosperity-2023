@@ -1,5 +1,4 @@
 from dontlooseshells_algo import Trader
-
 from datamodel import *
 from typing import Any
 import numpy as np
@@ -57,12 +56,14 @@ def process_prices(df_prices, time_limit) -> dict[int, TradingState]:
             depth.buy_orders[row["bid_price_2"]] = int(row["bid_volume_2"])
         if row["bid_price_3"]> 0:
             depth.buy_orders[row["bid_price_3"]] = int(row["bid_volume_3"])
+        
+        #Players should note that in the sell_orders property, the quantities specified will be negative. 
         if row["ask_price_1"]> 0:
-            depth.sell_orders[row["ask_price_1"]] = int(row["ask_volume_1"])
+            depth.sell_orders[row["ask_price_1"]] = -int(row["ask_volume_1"])
         if row["ask_price_2"]> 0:
-            depth.sell_orders[row["ask_price_2"]] = int(row["ask_volume_2"])
+            depth.sell_orders[row["ask_price_2"]] = -int(row["ask_volume_2"])
         if row["ask_price_3"]> 0:
-            depth.sell_orders[row["ask_price_3"]] = int(row["ask_volume_3"])
+            depth.sell_orders[row["ask_price_3"]] = -int(row["ask_volume_3"])
         states[time].order_depths[product] = depth
 
     return states
