@@ -92,6 +92,10 @@ current_limits = {
     'PINA_COLADAS': 300,
     'DIVING_GEAR': 50,
     'BERRIES': 250,
+    'BAGUETTE': 150,
+    'DIP': 300,
+    'UKULELE': 70,
+    'PICNIC_BASKET': 70,
 }
 
 # Setting a high time_limit can be harder to visualize
