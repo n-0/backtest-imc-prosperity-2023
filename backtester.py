@@ -7,6 +7,7 @@ import pandas as pd
 import statistics
 import copy
 import uuid
+import random
 
 # Timesteps used in training files
 TIME_DELTA = 100
@@ -58,11 +59,11 @@ def process_prices(df_prices, time_limit) -> dict[int, TradingState]:
         if row["bid_price_3"]> 0:
             depth.buy_orders[row["bid_price_3"]] = int(row["bid_volume_3"])
         if row["ask_price_1"]> 0:
-            depth.sell_orders[row["ask_price_1"]] = int(row["ask_volume_1"])
+            depth.sell_orders[row["ask_price_1"]] = -int(row["ask_volume_1"])
         if row["ask_price_2"]> 0:
-            depth.sell_orders[row["ask_price_2"]] = int(row["ask_volume_2"])
+            depth.sell_orders[row["ask_price_2"]] = -int(row["ask_volume_2"])
         if row["ask_price_3"]> 0:
-            depth.sell_orders[row["ask_price_3"]] = int(row["ask_volume_3"])
+            depth.sell_orders[row["ask_price_3"]] = -int(row["ask_volume_3"])
         states[time].order_depths[product] = depth
 
     return states
@@ -91,6 +92,10 @@ current_limits = {
     'PINA_COLADAS': 300,
     'DIVING_GEAR': 50,
     'BERRIES': 250,
+    'BAGUETTE': 150,
+    'DIP': 300,
+    'UKULELE': 70,
+    'PICNIC_BASKET': 70,
 }
 
 # Setting a high time_limit can be harder to visualize
@@ -177,6 +182,7 @@ def liquidate_leftovers(position: dict[Product, Position], profits_by_symbol: di
                     if liquidated_position[symbol] < 0:
                         print(f'Unable to liquidate all SHORT positions for {symbol}, left with {liquidated_position[symbol]}')
             position = liquidated_position
+        print(f'\n')
 
 def cleanup_order_volumes(org_orders: List[Order]) -> List[Order]:
     orders = [] #copy.deepcopy(org_orders)
@@ -212,10 +218,11 @@ def clear_order_book(trader_orders: dict[str, List[Order]], order_depth: dict[st
                         if len(potential_matches) > 0:
                             match = potential_matches[0]
                             final_volume = 0
-                            if match[1] > order.quantity:
+                            #Match[1] will be negative so needs to be changed to work here
+                            if abs(match[1]) > order.quantity:
                                 final_volume = order.quantity
                             else:
-                                final_volume = match[1]
+                                final_volume = abs(match[1])
                             trades.append(Trade(symbol, order.price, final_volume, "YOU", "BOT", time))
         return trades
                             
@@ -230,7 +237,7 @@ log_header = [
 
 def create_log_file(states: dict[int, TradingState], day, profits: dict[int, dict[str, float]], trader: Trader):
     file_name = uuid.uuid4()
-    with open(f'{file_name}.log', 'w', encoding="utf-8", newline='\n') as f:
+    with open(f'./logs/{file_name}.log', 'w', encoding="utf-8", newline='\n') as f:
         f.writelines(log_header)
         csv_rows = []
         f.write('\n')
@@ -285,9 +292,17 @@ def create_log_file(states: dict[int, TradingState], day, profits: dict[int, dic
                     max_bid = max(bids_prices)
                     median_price = statistics.median([min_ask, max_bid])
                     f.write(f'{median_price};{profits[time][symbol]}\n')
+                if time == inp:
+                    print(f'Final profit for {symbol} = {profits[time][symbol]}')
+        print(f"\nSimulation on round {rnd} day {day} for time {inp} complete")
 
 
 # Adjust accordingly the round and day to your needs
 if __name__ == "__main__":
     trader = Trader()
-    simulate_alternative(3, 0, trader, False, 30000)
+    inp = int(input("Input a timestamp to end (blank for 999000): ") or 999000)
+    rnd = int(input("Input a round (blank for 3): ") or 3)
+    day = int(input("Input a day (blank for random): ") or random.randint(0, 2))
+    print(f"Running simulation on round {rnd} day {day} for time {inp}")
+    print("Remember to change the trader import")
+    simulate_alternative(rnd, day, trader, False, inp)
