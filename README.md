@@ -81,20 +81,19 @@ class Logger:
         self.logs = ""
         self.local = local
 
-    def print(self, *objects: Any, sep: str = " ", end: str = "\n") -> None:
-        self.logs += sep.join(map(str, objects)) + end
-
     def flush(self, state: TradingState, orders: dict[Symbol, list[Order]]) -> None:
         output = json.dumps({
-            "state": state,
-            "orders": orders,
+            "state": self.compress_state(state),
+            "orders": self.compress_orders(orders),
             "logs": self.logs,
-        }, cls=ProsperityEncoder, separators=(",", ":"), sort_keys=True)
+        }, cls=ProsperityEncoder, separators=(",", ":"), sort_keys=True))
+
         if self.local:
             self.local_logs[state.timestamp] = output
-        print(output)
 
+        print(out)
         self.logs = ""
+# ... And the rest of the compression logic
 ```
 
 and in your `Trader` class add the attribute like this:

@@ -101,6 +101,7 @@ def process_trades(df_trades, states: dict[int, TradingState], time_limit):
                 '', #trade['seller'], 
                 time)
         states[time].market_trades[symbol].append(t)
+    return states
        
 current_limits = {
     'PEARLS': 20,
@@ -123,7 +124,7 @@ def simulate_alternative(round: int, day: int, trader, time_limit=999900, end_li
     df_prices = pd.read_csv(prices_path, sep=';')
     df_trades = pd.read_csv(trades_path, sep=';')
     states = process_prices(df_prices, time_limit)
-    process_trades(df_trades, states, time_limit)
+    states = process_trades(df_trades, states, time_limit)
     position = copy.copy(states[0].position)
     ref_symbols = list(states[0].position.keys())
     profits_by_symbol: dict[int, dict[str, float]] = { 0: dict(zip(ref_symbols, [0.0]*len(ref_symbols))) }
@@ -338,7 +339,7 @@ def create_log_file(round: int, day: int, states: dict[int, TradingState], profi
 if __name__ == "__main__":
     trader = Trader()
     max_time = int(input("Input a timestamp to end (blank for 999000): ") or 999000)
-    round = int(input("Input a round (blank for 3): ") or 3)
+    round = int(input("Input a round (blank for 4): ") or 4)
     day = int(input("Input a day (blank for random): ") or random.randint(0, 2))
     halfway = bool(input("Matching orders halfway (sth. not blank for True): ")) or False
     liqudation = bool(input("Should all positions be liquidated in the final run (sth. not blank for True): ")) or False
