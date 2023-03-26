@@ -7,6 +7,8 @@ import pandas as pd
 import statistics
 import copy
 import uuid
+import random
+
 
 # Timesteps used in training files
 TIME_DELTA = 100
@@ -292,4 +294,9 @@ def create_log_file(states: dict[int, TradingState], day, profits: dict[int, dic
 # Adjust accordingly the round and day to your needs
 if __name__ == "__main__":
     trader = Trader()
-    simulate_alternative(3, 0, trader, False, 30000)
+    inp = int(input("Input a timestamp to end (blank for 999000): ") or 999000)
+    rnd = int(input("Input a round (blank for 3): ") or 3)
+    day = int(input("Input a day (blank for random): ") or random.randint(0, 2))
+    print(f"Running simulation on round {rnd} day {day} for time {inp}")
+    print("Remember to change the trader import")
+    simulate_alternative(rnd, day, trader, False, inp)
