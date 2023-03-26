@@ -213,10 +213,11 @@ def clear_order_book(trader_orders: dict[str, List[Order]], order_depth: dict[st
                         if len(potential_matches) > 0:
                             match = potential_matches[0]
                             final_volume = 0
-                            if match[1] > order.quantity:
+                            #Match[1] will be negative so needs to be changed to work here 
+                            if abs(match[1]) > order.quantity:
                                 final_volume = order.quantity
                             else:
-                                final_volume = match[1]
+                                final_volume = abs(match[1])
                             trades.append(Trade(symbol, order.price, final_volume, "YOU", "BOT", time))
         return trades
                             
