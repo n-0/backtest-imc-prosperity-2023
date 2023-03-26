@@ -7,6 +7,7 @@ import pandas as pd
 import statistics
 import copy
 import uuid
+import random
 
 # Timesteps used in training files
 TIME_DELTA = 100
@@ -14,15 +15,32 @@ TIME_DELTA = 100
 # the same directory or adjust the code accordingly
 TRAINING_DATA_PREFIX = "./training"
 
-SYMBOLS = [
+ALL_SYMBOLS = [
     'PEARLS',
     'BANANAS',
     'COCONUTS',
     'PINA_COLADAS',
     'DIVING_GEAR',
     'BERRIES',
-    'DOLPHIN_SIGHTINGS'
+    'DOLPHIN_SIGHTINGS',
+    'BAGUETTE',
+    'DIP',
+    'UKULELE',
+    'PICNIC_BASKET'
 ]
+first_round = ['PEARLS', 'BANANAS']
+snd_round = first_round + ['COCONUTS',  'PINA_COLADAS']
+third_round = snd_round + ['DIVING_GEAR', 'DOLPHIN_SIGHTINGS']
+fourth_round = third_round + ['BAGUETTE', 'DIP', 'UKULELE', 'PICNIC_BASKET']
+fifth_round = fourth_round # + secret, maybe pirate gold?
+
+SYMBOLS_BY_ROUND = {
+    1: first_round,
+    2: snd_round,
+    3: third_round,
+    4: fourth_round,
+    5: fifth_round,
+}
 
 def process_prices(df_prices, time_limit) -> dict[int, TradingState]:
     states = {}
@@ -58,11 +76,11 @@ def process_prices(df_prices, time_limit) -> dict[int, TradingState]:
         if row["bid_price_3"]> 0:
             depth.buy_orders[row["bid_price_3"]] = int(row["bid_volume_3"])
         if row["ask_price_1"]> 0:
-            depth.sell_orders[row["ask_price_1"]] = int(row["ask_volume_1"])
+            depth.sell_orders[row["ask_price_1"]] = -int(row["ask_volume_1"])
         if row["ask_price_2"]> 0:
-            depth.sell_orders[row["ask_price_2"]] = int(row["ask_volume_2"])
+            depth.sell_orders[row["ask_price_2"]] = -int(row["ask_volume_2"])
         if row["ask_price_3"]> 0:
-            depth.sell_orders[row["ask_price_3"]] = int(row["ask_volume_3"])
+            depth.sell_orders[row["ask_price_3"]] = -int(row["ask_volume_3"])
         states[time].order_depths[product] = depth
 
     return states
@@ -91,11 +109,15 @@ current_limits = {
     'PINA_COLADAS': 300,
     'DIVING_GEAR': 50,
     'BERRIES': 250,
+    'BAGUETTE': 150,
+    'DIP': 300,
+    'UKULELE': 70,
+    'PICNIC_BASKET': 70,
 }
 
 # Setting a high time_limit can be harder to visualize
 # print_position prints the position before! every Trader.run
-def simulate_alternative(round: int, day: int, trader, print_position=False, time_limit=999900, end_liquidation=True, non_exact_match=False):
+def simulate_alternative(round: int, day: int, trader, time_limit=999900, end_liquidation=True, halfway=False, print_position=False):
     prices_path = f"{TRAINING_DATA_PREFIX}/prices_round_{round}_day_{day}.csv"
     trades_path = f"{TRAINING_DATA_PREFIX}/trades_round_{round}_day_{day}_nn.csv"
     df_prices = pd.read_csv(prices_path, sep=';')
@@ -109,7 +131,7 @@ def simulate_alternative(round: int, day: int, trader, print_position=False, tim
     for time, state in states.items():
         position = copy.deepcopy(state.position)
         orders = trader.run(state)
-        trades = clear_order_book(orders, state.order_depths, time, non_exact_match)
+        trades = clear_order_book(orders, state.order_depths, time, halfway)
         if print_position:
             print(position)
         if profits_by_symbol.get(time + TIME_DELTA) == None and time != max_time:
@@ -144,7 +166,7 @@ def simulate_alternative(round: int, day: int, trader, print_position=False, tim
                 liquidate_leftovers(position, profits_by_symbol, state, time)
         if states.get(time + TIME_DELTA) != None:
             states[time + TIME_DELTA].position = copy.deepcopy(position)
-    create_log_file(states, day, profits_by_symbol, trader)
+    create_log_file(round, day, states, profits_by_symbol, trader)
     if hasattr(trader, 'after_last_round'):
         if callable(trader.after_last_round):
             trader.after_last_round()
@@ -180,6 +202,7 @@ def liquidate_leftovers(position: dict[Product, Position], profits_by_symbol: di
                     if liquidated_position[symbol] < 0:
                         print(f'Unable to liquidate all SHORT positions for {symbol}, left with {liquidated_position[symbol]}')
             position = liquidated_position
+        print(f'\n')
 
 def cleanup_order_volumes(org_orders: List[Order]) -> List[Order]:
     orders = [] #copy.deepcopy(org_orders)
@@ -193,7 +216,7 @@ def cleanup_order_volumes(org_orders: List[Order]) -> List[Order]:
         orders.append(final_order)
     return orders
 
-def clear_order_book(trader_orders: dict[str, List[Order]], order_depth: dict[str, OrderDepth], time: int, non_exact_math) -> list[Trade]:
+def clear_order_book(trader_orders: dict[str, List[Order]], order_depth: dict[str, OrderDepth], time: int, halfway: bool) -> list[Trade]:
         trades = []
         for symbol in trader_orders.keys():
             if order_depth.get(symbol) != None:
@@ -201,7 +224,7 @@ def clear_order_book(trader_orders: dict[str, List[Order]], order_depth: dict[st
                 t_orders = cleanup_order_volumes(trader_orders[symbol])
                 for order in t_orders:
                     if order.quantity < 0:
-                        if non_exact_math:
+                        if halfway:
                             bids = symbol_order_depth.buy_orders.keys()
                             asks = symbol_order_depth.sell_orders.keys()
                             max_bid = max(bids)
@@ -213,13 +236,13 @@ def clear_order_book(trader_orders: dict[str, List[Order]], order_depth: dict[st
                             if len(potential_matches) > 0:
                                 match = potential_matches[0]
                                 final_volume = 0
-                                if match[1] > order.quantity:
+                                if match[1] > abs(order.quantity):
                                     final_volume = order.quantity
                                 else:
                                     final_volume = match[1]
                                 trades.append(Trade(symbol, order.price, final_volume, "YOU", "BOT", time))
                     if order.quantity > 0:
-                        if non_exact_math:
+                        if halfway:
                             bids = symbol_order_depth.buy_orders.keys()
                             asks = symbol_order_depth.sell_orders.keys()
                             max_bid = max(bids)
@@ -231,14 +254,15 @@ def clear_order_book(trader_orders: dict[str, List[Order]], order_depth: dict[st
                             if len(potential_matches) > 0:
                                 match = potential_matches[0]
                                 final_volume = 0
-                                if match[1] > order.quantity:
+                                #Match[1] will be negative so needs to be changed to work here
+                                if abs(match[1]) > order.quantity:
                                     final_volume = order.quantity
                                 else:
-                                    final_volume = match[1]
+                                    final_volume = abs(match[1])
                                 trades.append(Trade(symbol, order.price, final_volume, "YOU", "BOT", time))
         return trades
                             
-csv_header = "day;timestamp;product;bid_price_1;bid_volume_1;bid_price_2;bid_volume_2;bid_price_3;bid_volume_3;ask_price_1;ask_volume_1;ask_price_2;ask_volume_2;ask_price_3;ask_volume_3;mid_price;profit_and_loss"
+csv_header = "day;timestamp;product;bid_price_1;bid_volume_1;bid_price_2;bid_volume_2;bid_price_3;bid_volume_3;ask_price_1;ask_volume_1;ask_price_2;ask_volume_2;ask_price_3;ask_volume_3;mid_price;profit_and_loss\n"
 log_header = [
     'Sandbox logs:\n',
     '0 OpenBLAS WARNING - could not determine the L2 cache size on this system, assuming 256k\n',
@@ -247,11 +271,11 @@ log_header = [
     'REPORT RequestId: 8ab36ff8-b4e6-42d4-b012-e6ad69c42085	Duration: 18.73 ms	Billed Duration: 19 ms	Memory Size: 128 MB	Max Memory Used: 94 MB	Init Duration: 1574.09 ms\n',
 ]
 
-def create_log_file(states: dict[int, TradingState], day, profits: dict[int, dict[str, float]], trader: Trader):
+def create_log_file(round: int, day: int, states: dict[int, TradingState], profits: dict[int, dict[str, float]], trader: Trader):
     file_name = uuid.uuid4()
-    with open(f'{file_name}.log', 'w', encoding="utf-8", newline='\n') as f:
+    max_time = max(list(states.keys()))
+    with open(f'./logs/{file_name}.log', 'w', encoding="utf-8", newline='\n') as f:
         f.writelines(log_header)
-        csv_rows = []
         f.write('\n')
         for time, state in states.items():
             if hasattr(trader, 'logger'):
@@ -263,11 +287,11 @@ def create_log_file(states: dict[int, TradingState], day, profits: dict[int, dic
                 f.write(f'{time}\n')
 
         f.write(f'\n\n')
-        f.write('Submission logs:\n\n\n\n')
+        f.write('Submission logs:\n\n\n')
         f.write('Activities log:\n')
         f.write(csv_header)
         for time, state in states.items():
-            for symbol in SYMBOLS:
+            for symbol in SYMBOLS_BY_ROUND[round]:
                 f.write(f'{day};{time};{symbol};')
                 bids_length = len(state.order_depths[symbol].buy_orders)
                 bids = list(state.order_depths[symbol].buy_orders.items())
@@ -303,10 +327,21 @@ def create_log_file(states: dict[int, TradingState], day, profits: dict[int, dic
                     min_ask = min(asks_prices)
                     max_bid = max(bids_prices)
                     median_price = statistics.median([min_ask, max_bid])
-                    f.write(f'{median_price};{int(profits[time][symbol])}\n')
+                    f.write(f'{median_price};{profits[time][symbol]}\n')
+                    if time == max_time:
+                        if profits[time].get(symbol) != None:
+                            print(f'Final profit for {symbol} = {profits[time][symbol]}')
+        print(f"\nSimulation on round {round} day {day} for time {max_time} complete")
 
 
 # Adjust accordingly the round and day to your needs
 if __name__ == "__main__":
     trader = Trader()
-    simulate_alternative(3, 0, trader, False, 50000, True, True)
+    max_time = int(input("Input a timestamp to end (blank for 999000): ") or 999000)
+    round = int(input("Input a round (blank for 3): ") or 3)
+    day = int(input("Input a day (blank for random): ") or random.randint(0, 2))
+    halfway = bool(input("Matching orders halfway (sth. not blank for True): ")) or False
+    liqudation = bool(input("Should all positions be liquidated in the final run (sth. not blank for True): ")) or False
+    print(f"Running simulation on round {round} day {day} for time {max_time}")
+    print("Remember to change the trader import")
+    simulate_alternative(round, day, trader, max_time, liqudation, halfway, False)
