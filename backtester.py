@@ -9,7 +9,6 @@ import copy
 import uuid
 import random
 
-
 # Timesteps used in training files
 TIME_DELTA = 100
 # Please put all! the price and log files into
@@ -59,7 +58,6 @@ def process_prices(df_prices, time_limit) -> dict[int, TradingState]:
             depth.buy_orders[row["bid_price_2"]] = int(row["bid_volume_2"])
         if row["bid_price_3"]> 0:
             depth.buy_orders[row["bid_price_3"]] = int(row["bid_volume_3"])
-        #Incoming sell volumes need to be negative
         if row["ask_price_1"]> 0:
             depth.sell_orders[row["ask_price_1"]] = -int(row["ask_volume_1"])
         if row["ask_price_2"]> 0:
@@ -180,6 +178,7 @@ def liquidate_leftovers(position: dict[Product, Position], profits_by_symbol: di
                     if liquidated_position[symbol] < 0:
                         print(f'Unable to liquidate all SHORT positions for {symbol}, left with {liquidated_position[symbol]}')
             position = liquidated_position
+        print(f'\n')
 
 def cleanup_order_volumes(org_orders: List[Order]) -> List[Order]:
     orders = [] #copy.deepcopy(org_orders)
@@ -215,7 +214,7 @@ def clear_order_book(trader_orders: dict[str, List[Order]], order_depth: dict[st
                         if len(potential_matches) > 0:
                             match = potential_matches[0]
                             final_volume = 0
-                            #Match[1] will be negative so needs to be changed to work here 
+                            #Match[1] will be negative so needs to be changed to work here
                             if abs(match[1]) > order.quantity:
                                 final_volume = order.quantity
                             else:
@@ -289,6 +288,9 @@ def create_log_file(states: dict[int, TradingState], day, profits: dict[int, dic
                     max_bid = max(bids_prices)
                     median_price = statistics.median([min_ask, max_bid])
                     f.write(f'{median_price};{profits[time][symbol]}\n')
+                if time == inp:
+                    print(f'Final profit for {symbol} = {profits[time][symbol]}')
+        print(f"\nSimulation on round {rnd} day {day} for time {inp} complete")
 
 
 # Adjust accordingly the round and day to your needs
