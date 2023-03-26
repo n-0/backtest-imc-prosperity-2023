@@ -95,7 +95,7 @@ current_limits = {
 
 # Setting a high time_limit can be harder to visualize
 # print_position prints the position before! every Trader.run
-def simulate_alternative(round: int, day: int, trader, print_position=False, time_limit=999900, end_liquidation=True):
+def simulate_alternative(round: int, day: int, trader, print_position=False, time_limit=999900, end_liquidation=True, non_exact_match=False):
     prices_path = f"{TRAINING_DATA_PREFIX}/prices_round_{round}_day_{day}.csv"
     trades_path = f"{TRAINING_DATA_PREFIX}/trades_round_{round}_day_{day}_nn.csv"
     df_prices = pd.read_csv(prices_path, sep=';')
@@ -109,7 +109,7 @@ def simulate_alternative(round: int, day: int, trader, print_position=False, tim
     for time, state in states.items():
         position = copy.deepcopy(state.position)
         orders = trader.run(state)
-        trades = clear_order_book(orders, state.order_depths, time)
+        trades = clear_order_book(orders, state.order_depths, time, non_exact_match)
         if print_position:
             print(position)
         if profits_by_symbol.get(time + TIME_DELTA) == None and time != max_time:
@@ -145,6 +145,9 @@ def simulate_alternative(round: int, day: int, trader, print_position=False, tim
         if states.get(time + TIME_DELTA) != None:
             states[time + TIME_DELTA].position = copy.deepcopy(position)
     create_log_file(states, day, profits_by_symbol, trader)
+    if hasattr(trader, 'after_last_round'):
+        if callable(trader.after_last_round):
+            trader.after_last_round()
 
 def liquidate_leftovers(position: dict[Product, Position], profits_by_symbol: dict[int, dict[str, float]], state: TradingState, time: int):
         liquidated_position = copy.deepcopy(position)
@@ -190,7 +193,7 @@ def cleanup_order_volumes(org_orders: List[Order]) -> List[Order]:
         orders.append(final_order)
     return orders
 
-def clear_order_book(trader_orders: dict[str, List[Order]], order_depth: dict[str, OrderDepth], time: int) -> list[Trade]:
+def clear_order_book(trader_orders: dict[str, List[Order]], order_depth: dict[str, OrderDepth], time: int, non_exact_math) -> list[Trade]:
         trades = []
         for symbol in trader_orders.keys():
             if order_depth.get(symbol) != None:
@@ -198,25 +201,41 @@ def clear_order_book(trader_orders: dict[str, List[Order]], order_depth: dict[st
                 t_orders = cleanup_order_volumes(trader_orders[symbol])
                 for order in t_orders:
                     if order.quantity < 0:
-                        potential_matches = list(filter(lambda o: o[0] == order.price, symbol_order_depth.buy_orders.items()))
-                        if len(potential_matches) > 0:
-                            match = potential_matches[0]
-                            final_volume = 0
-                            if match[1] > order.quantity:
-                                final_volume = order.quantity
-                            else:
-                                final_volume = match[1]
-                            trades.append(Trade(symbol, order.price, final_volume, "YOU", "BOT", time))
+                        if non_exact_math:
+                            bids = symbol_order_depth.buy_orders.keys()
+                            asks = symbol_order_depth.sell_orders.keys()
+                            max_bid = max(bids)
+                            min_ask = min(asks)
+                            if order.price <= statistics.median([max_bid, min_ask]):
+                                trades.append(Trade(symbol, order.price, order.quantity, "YOU", "BOT", time))
+                        else:
+                            potential_matches = list(filter(lambda o: o[0] == order.price, symbol_order_depth.buy_orders.items()))
+                            if len(potential_matches) > 0:
+                                match = potential_matches[0]
+                                final_volume = 0
+                                if match[1] > order.quantity:
+                                    final_volume = order.quantity
+                                else:
+                                    final_volume = match[1]
+                                trades.append(Trade(symbol, order.price, final_volume, "YOU", "BOT", time))
                     if order.quantity > 0:
-                        potential_matches = list(filter(lambda o: o[0] == order.price, symbol_order_depth.sell_orders.items()))
-                        if len(potential_matches) > 0:
-                            match = potential_matches[0]
-                            final_volume = 0
-                            if match[1] > order.quantity:
-                                final_volume = order.quantity
-                            else:
-                                final_volume = match[1]
-                            trades.append(Trade(symbol, order.price, final_volume, "YOU", "BOT", time))
+                        if non_exact_math:
+                            bids = symbol_order_depth.buy_orders.keys()
+                            asks = symbol_order_depth.sell_orders.keys()
+                            max_bid = max(bids)
+                            min_ask = min(asks)
+                            if order.price >= statistics.median([max_bid, min_ask]):
+                                trades.append(Trade(symbol, order.price, order.quantity, "YOU", "BOT", time))
+                        else:
+                            potential_matches = list(filter(lambda o: o[0] == order.price, symbol_order_depth.sell_orders.items()))
+                            if len(potential_matches) > 0:
+                                match = potential_matches[0]
+                                final_volume = 0
+                                if match[1] > order.quantity:
+                                    final_volume = order.quantity
+                                else:
+                                    final_volume = match[1]
+                                trades.append(Trade(symbol, order.price, final_volume, "YOU", "BOT", time))
         return trades
                             
 csv_header = "day;timestamp;product;bid_price_1;bid_volume_1;bid_price_2;bid_volume_2;bid_price_3;bid_volume_3;ask_price_1;ask_volume_1;ask_price_2;ask_volume_2;ask_price_3;ask_volume_3;mid_price;profit_and_loss"
@@ -284,10 +303,10 @@ def create_log_file(states: dict[int, TradingState], day, profits: dict[int, dic
                     min_ask = min(asks_prices)
                     max_bid = max(bids_prices)
                     median_price = statistics.median([min_ask, max_bid])
-                    f.write(f'{median_price};{profits[time][symbol]}\n')
+                    f.write(f'{median_price};{int(profits[time][symbol])}\n')
 
 
 # Adjust accordingly the round and day to your needs
 if __name__ == "__main__":
     trader = Trader()
-    simulate_alternative(3, 0, trader, False, 30000)
+    simulate_alternative(3, 0, trader, False, 50000, True, True)
