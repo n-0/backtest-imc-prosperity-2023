@@ -340,7 +340,7 @@ if __name__ == "__main__":
     trader = Trader()
     max_time = int(input("Input a timestamp to end (blank for 999000): ") or 999000)
     round = int(input("Input a round (blank for 4): ") or 4)
-    day = int(input("Input a day (blank for random): ") or random.randint(1, 2))
+    day = int(input("Input a day (blank for random): ") or random.randint(1, 3))
     halfway = bool(input("Matching orders halfway (sth. not blank for True): ")) or False
     liqudation = bool(input("Should all positions be liquidated in the final run (sth. not blank for True): ")) or False
     print(f"Running simulation on round {round} day {day} for time {max_time}")
