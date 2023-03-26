@@ -12,7 +12,10 @@ of the state provided to the method call. The trader always gets their trade and
 trades from bots are ignored. An order is matched only if the price is exactly the
 same as an opposite one from `OrderDepth`. If the new position that would result from
 this order exceeds the specified limit of the symbol, all following orders (including the failing one)
-are cancelled.
+are cancelled. You can relax those conditions by answering sth. to `Matching orders halfway (sth. not blank for True):`, during the input dialog
+of the backtester. Halfway matches any volume (regardless of order book), such that
+sell/buy orders are always matched, if they're below/above the midprice
+of the highest bid/lowest ask (regardless of volume)
 
 ## Profit and Loss (PnL)
 PnL is calculated by adding the previous profit (starting from 0.0) to the value
@@ -32,6 +35,12 @@ E.g.
 simulate_alternative(3, 0, trader, False, 30000, True)`
 ```
 
+
+## After All
+If your trader has a method called `after_last_round`, it will be called after the logs have been written.
+This is useful for plotting something with matplotlib for example (but don't forget to remove the import,
+when you upload your algorithm).
+
 ## General usage
 Add the csv's from IMC to the training folder and adjust if necessary the constant `TRAINING_DATA_PREFIX`
 to the full path of `training` directory on your system, at the top of `backtester.py`.
@@ -49,12 +58,11 @@ if __name__ == "__main__":
 The central method is `simulate_alternative`. There are some default parameters
 and the meaning is
 ```
-simulate_alternative(round: int, day: int, trader, print_position=False, time_limit=999900, end_liquidation=True)
+def simulate_alternative(round: int, day: int, trader, time_limit=999900, end_liquidation=True, halfway=False, print_position=False):
 ```
 where round and day are substituted to the following path `{TRAINING_DATA_PREFIX}/prices_round_{round}_day_{day}.csv` (same for `trades_round...`).
-Be careful if you're using windows, where the separator is `\`. Trader is your algorithm trader, `print_position` prints before every call of `Trader.run`
-the current position to the stdout and `time_limit` can be decreased to only read a part of the full training file. `end_liquidation=False` stops the
-backtest from liquidating all your open positions in the last round.
+Be careful if you're using windows, where the separator is `\`. Trader is your algorithm trader, `time_limit` can be decreased to only read a part of the full training file. `end_liquidation=False` stops the backtest from liquidating all your open positions in the last round. `halway` enables smarter order matching, `print_position` prints before every call of `Trader.run`
+the current position to the stdout
 
 ## Logging with jmerle's visualizer
 Because the `backtester` doesn't read from the stdout nor stderr, logs produced have an empty `Submission logs:` section (still limit exceeds are printed).
