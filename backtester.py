@@ -8,6 +8,7 @@ import statistics
 import copy
 import uuid
 import random
+from datetime import datetime
 
 # Timesteps used in training files
 TIME_DELTA = 100
@@ -140,7 +141,7 @@ def calc_mid(state: TradingState) -> dict[str, float]:
 
 # Setting a high time_limit can be harder to visualize
 # print_position prints the position before! every Trader.run
-def simulate_alternative(round: int, day: int, trader, time_limit=999900, end_liquidation=True, halfway=False, print_position=False):
+def simulate_alternative(round: int, day: int, trader, time_limit=999900, halfway=False, print_position=False):
     prices_path = f"{TRAINING_DATA_PREFIX}/prices_round_{round}_day_{day}.csv"
     trades_path = f"{TRAINING_DATA_PREFIX}/trades_round_{round}_day_{day}_nn.csv"
     df_prices = pd.read_csv(prices_path, sep=';')
@@ -206,8 +207,8 @@ def simulate_alternative(round: int, day: int, trader, time_limit=999900, end_li
             states[time + FLEX_TIME_DELTA].own_trades = grouped_by_symbol
             for psymbol in POSITIONABLE_SYMBOLS:
                 unrealized_by_symbol[time + FLEX_TIME_DELTA][psymbol] = mids[psymbol]*position[psymbol]
-                if position[psymbol] == 0:
-                    profits_by_symbol[time + FLEX_TIME_DELTA][psymbol] += balance_by_symbol[time + FLEX_TIME_DELTA][psymbol]
+                if position[psymbol] == 0 and states[time].position[psymbol] != 0:
+                    profits_by_symbol[time + FLEX_TIME_DELTA][psymbol] += credit_by_symbol[time + FLEX_TIME_DELTA][psymbol] #+unrealized_by_symbol[time + FLEX_TIME_DELTA][psymbol]
                     credit_by_symbol[time + FLEX_TIME_DELTA][psymbol] = 0
                     balance_by_symbol[time + FLEX_TIME_DELTA][psymbol] = 0
                 else:
@@ -215,11 +216,14 @@ def simulate_alternative(round: int, day: int, trader, time_limit=999900, end_li
 
         if time == max_time:
             print("End of simulation reached. All positions left are liquidated")
-            if not end_liquidation:
-                print("Currently end liqudation is not configurable")
+            # i have the feeling this already has been done, and only repeats the same values as before
+            for osymbol in position.keys():
+                profits_by_symbol[time + FLEX_TIME_DELTA][osymbol] += credit_by_symbol[time + FLEX_TIME_DELTA][osymbol] + unrealized_by_symbol[time + FLEX_TIME_DELTA][osymbol]
+                balance_by_symbol[time + FLEX_TIME_DELTA][osymbol] = 0
                 #liquidate_leftovers(position, profits_by_symbol, credit_by_symbol, state, time)
         if states.get(time + FLEX_TIME_DELTA) != None:
             states[time + FLEX_TIME_DELTA].position = copy.deepcopy(position)
+
     create_log_file(round, day, states, profits_by_symbol, balance_by_symbol, trader)
     if hasattr(trader, 'after_last_round'):
         if callable(trader.after_last_round):
@@ -295,7 +299,7 @@ def clear_order_book(trader_orders: dict[str, List[Order]], order_depth: dict[st
                                 else:
                                     #this should be negative
                                     final_volume = -match[1]
-                                trades.append(Trade(symbol, order.price, final_volume, "YOU", "BOT", time))
+                                trades.append(Trade(symbol, order.price, final_volume, "BOT", "YOU", time))
                     if order.quantity > 0:
                         if halfway:
                             bids = symbol_order_depth.buy_orders.keys()
@@ -328,8 +332,9 @@ log_header = [
 
 def create_log_file(round: int, day: int, states: dict[int, TradingState], profits_by_symbol: dict[int, dict[str, float]], balance_by_symbol: dict[int, dict[str, float]], trader: Trader):
     file_name = uuid.uuid4()
+    timest = datetime.timestamp(datetime.now())
     max_time = max(list(states.keys()))
-    with open(f'./logs/{file_name}.log', 'w', encoding="utf-8", newline='\n') as f:
+    with open(f'./logs/{timest}_{file_name}.log', 'w', encoding="utf-8", newline='\n') as f:
         f.writelines(log_header)
         f.write('\n')
         for time, state in states.items():
@@ -399,7 +404,7 @@ if __name__ == "__main__":
     round = int(input("Input a round (blank for 4): ") or 4)
     day = int(input("Input a day (blank for random): ") or random.randint(1, 3))
     halfway = bool(input("Matching orders halfway (sth. not blank for True): ")) or False
-    liqudation = bool(input("Should all positions be liquidated in the final run (sth. not blank for True): ")) or False
+    #liqudation = bool(input("Should all positions be liquidated in the final run (sth. not blank for True): ")) or False
     """
     max_time = 60000
     round = 4
@@ -409,4 +414,4 @@ if __name__ == "__main__":
     """
     print(f"Running simulation on round {round} day {day} for time {max_time}")
     print("Remember to change the trader import")
-    simulate_alternative(round, day, trader, max_time, liqudation, halfway, False)
+    simulate_alternative(round, day, trader, max_time, halfway, False)
