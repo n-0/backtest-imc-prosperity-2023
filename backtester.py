@@ -397,7 +397,6 @@ def create_log_file(round: int, day: int, states: dict[int, TradingState], profi
 # Adjust accordingly the round and day to your needs
 if __name__ == "__main__":
     trader = Trader()
-    """
     max_time = int(input("Input a timestamp to end (blank for 999000): ") or 999000)
     round = int(input("Input a round (blank for 4): ") or 4)
     day = int(input("Input a day (blank for random): ") or random.randint(1, 3))
@@ -409,6 +408,7 @@ if __name__ == "__main__":
     day = 1
     halfway = False
     liqudation = True
+    """
     print(f"Running simulation on round {round} day {day} for time {max_time}")
     print("Remember to change the trader import")
     simulate_alternative(round, day, trader, max_time, liqudation, halfway, False)
