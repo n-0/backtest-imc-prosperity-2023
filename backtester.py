@@ -1,7 +1,7 @@
 from dontlooseshells_algo import Trader
 
 from datamodel import *
-from typing import Any
+from typing import Any  #, Callable
 import numpy as np
 import pandas as pd
 import statistics
@@ -23,6 +23,18 @@ ALL_SYMBOLS = [
     'DIVING_GEAR',
     'BERRIES',
     'DOLPHIN_SIGHTINGS',
+    'BAGUETTE',
+    'DIP',
+    'UKULELE',
+    'PICNIC_BASKET'
+]
+POSITIONABLE_SYMBOLS = [
+    'PEARLS',
+    'BANANAS',
+    'COCONUTS',
+    'PINA_COLADAS',
+    'DIVING_GEAR',
+    'BERRIES',
     'BAGUETTE',
     'DIP',
     'UKULELE',
@@ -58,7 +70,7 @@ def process_prices(df_prices, time_limit) -> dict[int, TradingState]:
             depths = {}
             states[time] = TradingState(time, listings, depths, own_trades, market_trades, position, observations)
 
-        if product not in states[time].position:
+        if product not in states[time].position and product in POSITIONABLE_SYMBOLS:
             states[time].position[product] = 0
             states[time].own_trades[product] = []
             states[time].market_trades[product] = []
@@ -116,6 +128,16 @@ current_limits = {
     'PICNIC_BASKET': 70,
 }
 
+def calc_mid(state: TradingState) -> dict[str, float]:
+    medians_by_symbol = {}
+    for psymbol in POSITIONABLE_SYMBOLS:
+        min_ask = min(state.order_depths[psymbol].sell_orders.keys())
+        max_bid = max(state.order_depths[psymbol].buy_orders.keys())
+        median_price = statistics.median([min_ask, max_bid])
+        medians_by_symbol[psymbol] = median_price
+    return medians_by_symbol
+
+
 # Setting a high time_limit can be harder to visualize
 # print_position prints the position before! every Trader.run
 def simulate_alternative(round: int, day: int, trader, time_limit=999900, end_liquidation=True, halfway=False, print_position=False):
@@ -127,23 +149,38 @@ def simulate_alternative(round: int, day: int, trader, time_limit=999900, end_li
     states = process_trades(df_trades, states, time_limit)
     position = copy.copy(states[0].position)
     ref_symbols = list(states[0].position.keys())
-    profits_by_symbol: dict[int, dict[str, float]] = { 0: dict(zip(ref_symbols, [0.0]*len(ref_symbols))) }
     max_time = max(list(states.keys()))
+
+    # handling these four is rather tricky 
+    profits_by_symbol: dict[int, dict[str, float]] = { 0: dict(zip(ref_symbols, [0.0]*len(ref_symbols))) }
+    balance_by_symbol: dict[int, dict[str, float]] = { 0: copy.deepcopy(profits_by_symbol[0]) }
+    credit_by_symbol: dict[int, dict[str, float]] = { 0: copy.deepcopy(profits_by_symbol[0]) }
+    unrealized_by_symbol: dict[int, dict[str, float]] = { 0: copy.deepcopy(profits_by_symbol[0]) }
     for time, state in states.items():
         position = copy.deepcopy(state.position)
         orders = trader.run(state)
         trades = clear_order_book(orders, state.order_depths, time, halfway)
+        mids = calc_mid(state)
         if print_position:
             print(position)
         if profits_by_symbol.get(time + TIME_DELTA) == None and time != max_time:
             profits_by_symbol[time + TIME_DELTA] = copy.deepcopy(profits_by_symbol[time])
+        if credit_by_symbol.get(time + TIME_DELTA) == None and time != max_time:
+            credit_by_symbol[time + TIME_DELTA] = copy.deepcopy(credit_by_symbol[time])
+        if balance_by_symbol.get(time + TIME_DELTA) == None and time != max_time:
+            balance_by_symbol[time + TIME_DELTA] = copy.deepcopy(balance_by_symbol[time])
+        if unrealized_by_symbol.get(time + TIME_DELTA) == None and time != max_time:
+            unrealized_by_symbol[time + TIME_DELTA] = copy.deepcopy(unrealized_by_symbol[time])
+            for psymbol in POSITIONABLE_SYMBOLS:
+                unrealized_by_symbol[time + TIME_DELTA][psymbol] = mids[psymbol]*position[psymbol]
+        valid_trades = []
+        failed_symbol = []
+        grouped_by_symbol = {}
         if len(trades) > 0:
-            grouped_by_symbol = {}
             for trade in trades:
-                current_pnl = profits_by_symbol[time][trade.symbol]
-                if grouped_by_symbol.get(trade.symbol) == None:
-                    grouped_by_symbol[trade.symbol] = []
-                n_position = position[trade.symbol] + trade.quantity 
+                if trade.symbol in failed_symbol:
+                    continue
+                n_position = position[trade.symbol] + trade.quantity
                 if abs(n_position) > current_limits[trade.symbol]:
                     print('ILLEGAL TRADE, WOULD EXCEED POSITION LIMIT, KILLING ALL REMAINING ORDERS')
                     trade_vars = vars(trade)
@@ -154,25 +191,41 @@ def simulate_alternative(round: int, day: int, trader, time_limit=999900, end_li
                         trade_vars = vars(trade)
                         trades_str = ', '.join("%s: %s" % item for item in trade_vars.items())
                         print(trades_str)
-                    break
-                position[trade.symbol] = n_position
-                current_pnl += -trade.price * trade.quantity
-                if states.get(time + TIME_DELTA) != None:
-                    profits_by_symbol[time + TIME_DELTA][trade.symbol] = current_pnl
-            if states.get(time + TIME_DELTA) != None:
-                states[time + TIME_DELTA].own_trades = grouped_by_symbol
+                    failed_symbol.append(trade.symbol)
+                valid_trades.append(trade) 
+        FLEX_TIME_DELTA = TIME_DELTA
+        if time == max_time:
+            FLEX_TIME_DELTA = 0
+        for valid_trade in valid_trades:
+                position[valid_trade.symbol] += valid_trade.quantity
+                if grouped_by_symbol.get(valid_trade.symbol) == None:
+                    grouped_by_symbol[valid_trade.symbol] = []
+                grouped_by_symbol[valid_trade.symbol].append(valid_trade)
+                credit_by_symbol[time + FLEX_TIME_DELTA][valid_trade.symbol] += -valid_trade.price * valid_trade.quantity
+        if states.get(time + FLEX_TIME_DELTA) != None:
+            states[time + FLEX_TIME_DELTA].own_trades = grouped_by_symbol
+            for psymbol in POSITIONABLE_SYMBOLS:
+                unrealized_by_symbol[time + FLEX_TIME_DELTA][psymbol] = mids[psymbol]*position[psymbol]
+                if position[psymbol] == 0:
+                    profits_by_symbol[time + FLEX_TIME_DELTA][psymbol] += balance_by_symbol[time + FLEX_TIME_DELTA][psymbol]
+                    credit_by_symbol[time + FLEX_TIME_DELTA][psymbol] = 0
+                    balance_by_symbol[time + FLEX_TIME_DELTA][psymbol] = 0
+                else:
+                    balance_by_symbol[time + FLEX_TIME_DELTA][psymbol] = credit_by_symbol[time + FLEX_TIME_DELTA][psymbol] + unrealized_by_symbol[time + FLEX_TIME_DELTA][psymbol]
+
         if time == max_time:
             print("End of simulation reached. All positions left are liquidated")
-            if end_liquidation: 
-                liquidate_leftovers(position, profits_by_symbol, state, time)
-        if states.get(time + TIME_DELTA) != None:
-            states[time + TIME_DELTA].position = copy.deepcopy(position)
-    create_log_file(round, day, states, profits_by_symbol, trader)
+            if not end_liquidation:
+                print("Currently end liqudation is not configurable")
+                #liquidate_leftovers(position, profits_by_symbol, credit_by_symbol, state, time)
+        if states.get(time + FLEX_TIME_DELTA) != None:
+            states[time + FLEX_TIME_DELTA].position = copy.deepcopy(position)
+    create_log_file(round, day, states, profits_by_symbol, balance_by_symbol, trader)
     if hasattr(trader, 'after_last_round'):
         if callable(trader.after_last_round):
             trader.after_last_round()
 
-def liquidate_leftovers(position: dict[Product, Position], profits_by_symbol: dict[int, dict[str, float]], state: TradingState, time: int):
+def liquidate_leftovers(position: dict[Product, Position], profits_by_symbol: dict[int, dict[str, float]], credit_by_symbol: dict[int, dict[str, float]], state: TradingState, time: int):
         liquidated_position = copy.deepcopy(position)
         for symbol in position.keys():
             if liquidated_position[symbol] != 0:
@@ -231,7 +284,7 @@ def clear_order_book(trader_orders: dict[str, List[Order]], order_depth: dict[st
                             max_bid = max(bids)
                             min_ask = min(asks)
                             if order.price <= statistics.median([max_bid, min_ask]):
-                                trades.append(Trade(symbol, order.price, order.quantity, "YOU", "BOT", time))
+                                trades.append(Trade(symbol, order.price, order.quantity, "BOT", "YOU", time))
                         else:
                             potential_matches = list(filter(lambda o: o[0] == order.price, symbol_order_depth.buy_orders.items()))
                             if len(potential_matches) > 0:
@@ -272,7 +325,7 @@ log_header = [
     'REPORT RequestId: 8ab36ff8-b4e6-42d4-b012-e6ad69c42085	Duration: 18.73 ms	Billed Duration: 19 ms	Memory Size: 128 MB	Max Memory Used: 94 MB	Init Duration: 1574.09 ms\n',
 ]
 
-def create_log_file(round: int, day: int, states: dict[int, TradingState], profits: dict[int, dict[str, float]], trader: Trader):
+def create_log_file(round: int, day: int, states: dict[int, TradingState], profits_by_symbol: dict[int, dict[str, float]], balance_by_symbol: dict[int, dict[str, float]], trader: Trader):
     file_name = uuid.uuid4()
     max_time = max(list(states.keys()))
     with open(f'./logs/{file_name}.log', 'w', encoding="utf-8", newline='\n') as f:
@@ -321,28 +374,41 @@ def create_log_file(round: int, day: int, states: dict[int, TradingState], profi
                 if len(asks_prices) == 0 or max(bids_prices) == 0:
                     if symbol == 'DOLPHIN_SIGHTINGS':
                         dolphin_sightings = state.observations['DOLPHIN_SIGHTINGS']
-                        f.write(f'{dolphin_sightings};{profits[time][symbol]}\n')
+                        f.write(f'{dolphin_sightings};{0.0}\n')
                     else:
-                        f.write(f'{0};{profits[time][symbol]}\n')
+                        f.write(f'{0};{0.0}\n')
                 else:
+                    actual_profit = 0.0
+                    if symbol in POSITIONABLE_SYMBOLS:
+                        if balance_by_symbol[time][symbol] != 0:
+                            actual_profit = profits_by_symbol[time][symbol] + balance_by_symbol[time][symbol]
+                        else:
+                            actual_profit = profits_by_symbol[time][symbol]
                     min_ask = min(asks_prices)
                     max_bid = max(bids_prices)
                     median_price = statistics.median([min_ask, max_bid])
-                    f.write(f'{median_price};{profits[time][symbol]}\n')
+                    f.write(f'{median_price};{actual_profit}\n')
                     if time == max_time:
-                        if profits[time].get(symbol) != None:
-                            print(f'Final profit for {symbol} = {profits[time][symbol]}')
+                        if profits_by_symbol[time].get(symbol) != None:
+                            print(f'Final profit for {symbol} = {actual_profit}')
         print(f"\nSimulation on round {round} day {day} for time {max_time} complete")
 
 
 # Adjust accordingly the round and day to your needs
 if __name__ == "__main__":
     trader = Trader()
+    """
     max_time = int(input("Input a timestamp to end (blank for 999000): ") or 999000)
     round = int(input("Input a round (blank for 4): ") or 4)
     day = int(input("Input a day (blank for random): ") or random.randint(1, 2))
     halfway = bool(input("Matching orders halfway (sth. not blank for True): ")) or False
     liqudation = bool(input("Should all positions be liquidated in the final run (sth. not blank for True): ")) or False
+    """
+    max_time = 60000
+    round = 4
+    day = 1
+    halfway = False
+    liqudation = True
     print(f"Running simulation on round {round} day {day} for time {max_time}")
     print("Remember to change the trader import")
     simulate_alternative(round, day, trader, max_time, liqudation, halfway, False)

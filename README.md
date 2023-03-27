@@ -15,7 +15,7 @@ this order exceeds the specified limit of the symbol, all following orders (incl
 are cancelled. You can relax those conditions by answering sth. to `Matching orders halfway (sth. not blank for True):`, during the input dialog
 of the backtester. Halfway matches any volume (regardless of order book), such that
 sell/buy orders are always matched, if they're below/above the midprice
-of the highest bid/lowest ask (regardless of volume)
+of the highest bid/lowest ask (regardless of volume).
 
 ## Profit and Loss (PnL)
 PnL is calculated by adding the previous profit (starting from 0.0) to the value
