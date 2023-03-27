@@ -42,7 +42,7 @@ POSITIONABLE_SYMBOLS = [
 ]
 first_round = ['PEARLS', 'BANANAS']
 snd_round = first_round + ['COCONUTS',  'PINA_COLADAS']
-third_round = snd_round + ['DIVING_GEAR', 'DOLPHIN_SIGHTINGS']
+third_round = snd_round + ['DIVING_GEAR', 'DOLPHIN_SIGHTINGS', 'BERRIES']
 fourth_round = third_round + ['BAGUETTE', 'DIP', 'UKULELE', 'PICNIC_BASKET']
 fifth_round = fourth_round # + secret, maybe pirate gold?
 
@@ -293,7 +293,8 @@ def clear_order_book(trader_orders: dict[str, List[Order]], order_depth: dict[st
                                 if abs(match[1]) > abs(order.quantity):
                                     final_volume = order.quantity
                                 else:
-                                    final_volume = match[1]
+                                    #this should be negative
+                                    final_volume = -match[1]
                                 trades.append(Trade(symbol, order.price, final_volume, "YOU", "BOT", time))
                     if order.quantity > 0:
                         if halfway:
