@@ -364,11 +364,11 @@ def create_log_file(round: int, day: int, states: dict[int, TradingState], profi
                 else:
                     f.write(f';;;;;;')
                 if asks_length >= 3:
-                    f.write(f'{asks[0][0]};{asks[0][1]};{asks[1][0]};{asks[1][1]};{asks[2][0]};{asks[2][1]};')
+                    f.write(f'{asks[0][0]};{abs(asks[0][1])};{asks[1][0]};{abs(asks[1][1])};{asks[2][0]};{abs(asks[2][1])};')
                 elif asks_length == 2:
-                    f.write(f'{asks[0][0]};{asks[0][1]};{asks[1][0]};{asks[1][1]};;;')
+                    f.write(f'{asks[0][0]};{abs(asks[0][1])};{asks[1][0]};{abs(asks[1][1])};;;')
                 elif asks_length == 1:
-                    f.write(f'{asks[0][0]};{asks[0][1]};;;;;')
+                    f.write(f'{asks[0][0]};{absasks[0][1])};;;;;')
                 else:
                     f.write(f';;;;;;')
                 if len(asks_prices) == 0 or max(bids_prices) == 0:
@@ -400,7 +400,7 @@ if __name__ == "__main__":
     """
     max_time = int(input("Input a timestamp to end (blank for 999000): ") or 999000)
     round = int(input("Input a round (blank for 4): ") or 4)
-    day = int(input("Input a day (blank for random): ") or random.randint(1, 2))
+    day = int(input("Input a day (blank for random): ") or random.randint(1, 3))
     halfway = bool(input("Matching orders halfway (sth. not blank for True): ")) or False
     liqudation = bool(input("Should all positions be liquidated in the final run (sth. not blank for True): ")) or False
     """
