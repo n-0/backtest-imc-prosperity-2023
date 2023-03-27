@@ -309,7 +309,7 @@ def clear_order_book(trader_orders: dict[str, List[Order]], order_depth: dict[st
                                 match = potential_matches[0]
                                 final_volume = 0
                                 #Match[1] will be negative so needs to be changed to work here
-                                if abs(match[1]) > order.quantity:
+                                if abs(match[1]) > abs(order.quantity):
                                     final_volume = order.quantity
                                 else:
                                     final_volume = abs(match[1])
