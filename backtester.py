@@ -290,7 +290,7 @@ def clear_order_book(trader_orders: dict[str, List[Order]], order_depth: dict[st
                             if len(potential_matches) > 0:
                                 match = potential_matches[0]
                                 final_volume = 0
-                                if match[1] > abs(order.quantity):
+                                if abs(match[1]) > abs(order.quantity):
                                     final_volume = order.quantity
                                 else:
                                     final_volume = match[1]
@@ -380,10 +380,7 @@ def create_log_file(round: int, day: int, states: dict[int, TradingState], profi
                 else:
                     actual_profit = 0.0
                     if symbol in POSITIONABLE_SYMBOLS:
-                        if balance_by_symbol[time][symbol] != 0:
                             actual_profit = profits_by_symbol[time][symbol] + balance_by_symbol[time][symbol]
-                        else:
-                            actual_profit = profits_by_symbol[time][symbol]
                     min_ask = min(asks_prices)
                     max_bid = max(bids_prices)
                     median_price = statistics.median([min_ask, max_bid])
