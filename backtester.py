@@ -55,7 +55,21 @@ SYMBOLS_BY_ROUND = {
     5: fifth_round,
 }
 
-def process_prices(df_prices, time_limit) -> dict[int, TradingState]:
+first_round_pst = ['PEARLS', 'BANANAS']
+snd_round_pst = first_round_pst + ['COCONUTS',  'PINA_COLADAS']
+third_round_pst = snd_round_pst + ['DIVING_GEAR', 'BERRIES']
+fourth_round_pst = third_round_pst + ['BAGUETTE', 'DIP', 'UKULELE', 'PICNIC_BASKET']
+fifth_round_pst = fourth_round_pst # + secret, maybe pirate gold?
+
+SYMBOLS_BY_ROUND_POSITIONABLE = {
+    1: first_round_pst,
+    2: snd_round_pst,
+    3: third_round_pst,
+    4: fourth_round_pst,
+    5: fifth_round_pst,
+}
+
+def process_prices(df_prices, round, time_limit) -> dict[int, TradingState]:
     states = {}
     for _, row in df_prices.iterrows():
         time: int = int(row["timestamp"])
@@ -71,7 +85,7 @@ def process_prices(df_prices, time_limit) -> dict[int, TradingState]:
             depths = {}
             states[time] = TradingState(time, listings, depths, own_trades, market_trades, position, observations)
 
-        if product not in states[time].position and product in POSITIONABLE_SYMBOLS:
+        if product not in states[time].position and product in SYMBOLS_BY_ROUND_POSITIONABLE[round]:
             states[time].position[product] = 0
             states[time].own_trades[product] = []
             states[time].market_trades[product] = []
@@ -129,11 +143,21 @@ current_limits = {
     'PICNIC_BASKET': 70,
 }
 
-def calc_mid(state: TradingState) -> dict[str, float]:
+def calc_mid(states: dict[int, TradingState], round: int, time: int, max_time: int) -> dict[str, float]:
     medians_by_symbol = {}
-    for psymbol in POSITIONABLE_SYMBOLS:
-        min_ask = min(state.order_depths[psymbol].sell_orders.keys())
-        max_bid = max(state.order_depths[psymbol].buy_orders.keys())
+    non_empty_time = time
+    for psymbol in SYMBOLS_BY_ROUND_POSITIONABLE[round]:
+        hitted_zero = False
+        while len(states[non_empty_time].order_depths[psymbol].sell_orders.keys()) == 0 or len(states[non_empty_time].order_depths[psymbol].buy_orders.keys()) == 0:
+            # little hack
+            if time == 0 or hitted_zero and time != max_time:
+                print(psymbol)
+                hitted_zero = True
+                non_empty_time += TIME_DELTA
+            else:
+                non_empty_time -= TIME_DELTA
+        min_ask = min(states[non_empty_time].order_depths[psymbol].sell_orders.keys())
+        max_bid = max(states[non_empty_time].order_depths[psymbol].buy_orders.keys())
         median_price = statistics.median([min_ask, max_bid])
         medians_by_symbol[psymbol] = median_price
     return medians_by_symbol
@@ -146,7 +170,7 @@ def simulate_alternative(round: int, day: int, trader, time_limit=999900, halfwa
     trades_path = f"{TRAINING_DATA_PREFIX}/trades_round_{round}_day_{day}_nn.csv"
     df_prices = pd.read_csv(prices_path, sep=';')
     df_trades = pd.read_csv(trades_path, sep=';')
-    states = process_prices(df_prices, time_limit)
+    states = process_prices(df_prices, round, time_limit)
     states = process_trades(df_trades, states, time_limit)
     position = copy.copy(states[0].position)
     ref_symbols = list(states[0].position.keys())
@@ -161,7 +185,7 @@ def simulate_alternative(round: int, day: int, trader, time_limit=999900, halfwa
         position = copy.deepcopy(state.position)
         orders = trader.run(state)
         trades = clear_order_book(orders, state.order_depths, time, halfway)
-        mids = calc_mid(state)
+        mids = calc_mid(states, round, time, max_time)
         if print_position:
             print(position)
         if profits_by_symbol.get(time + TIME_DELTA) == None and time != max_time:
@@ -172,7 +196,7 @@ def simulate_alternative(round: int, day: int, trader, time_limit=999900, halfwa
             balance_by_symbol[time + TIME_DELTA] = copy.deepcopy(balance_by_symbol[time])
         if unrealized_by_symbol.get(time + TIME_DELTA) == None and time != max_time:
             unrealized_by_symbol[time + TIME_DELTA] = copy.deepcopy(unrealized_by_symbol[time])
-            for psymbol in POSITIONABLE_SYMBOLS:
+            for psymbol in SYMBOLS_BY_ROUND_POSITIONABLE[round]:
                 unrealized_by_symbol[time + TIME_DELTA][psymbol] = mids[psymbol]*position[psymbol]
         valid_trades = []
         failed_symbol = []
@@ -205,7 +229,7 @@ def simulate_alternative(round: int, day: int, trader, time_limit=999900, halfwa
                 credit_by_symbol[time + FLEX_TIME_DELTA][valid_trade.symbol] += -valid_trade.price * valid_trade.quantity
         if states.get(time + FLEX_TIME_DELTA) != None:
             states[time + FLEX_TIME_DELTA].own_trades = grouped_by_symbol
-            for psymbol in POSITIONABLE_SYMBOLS:
+            for psymbol in SYMBOLS_BY_ROUND_POSITIONABLE[round]:
                 unrealized_by_symbol[time + FLEX_TIME_DELTA][psymbol] = mids[psymbol]*position[psymbol]
                 if position[psymbol] == 0 and states[time].position[psymbol] != 0:
                     profits_by_symbol[time + FLEX_TIME_DELTA][psymbol] += credit_by_symbol[time + FLEX_TIME_DELTA][psymbol] #+unrealized_by_symbol[time + FLEX_TIME_DELTA][psymbol]
@@ -385,7 +409,7 @@ def create_log_file(round: int, day: int, states: dict[int, TradingState], profi
                         f.write(f'{0};{0.0}\n')
                 else:
                     actual_profit = 0.0
-                    if symbol in POSITIONABLE_SYMBOLS:
+                    if symbol in SYMBOLS_BY_ROUND_POSITIONABLE[round]:
                             actual_profit = profits_by_symbol[time][symbol] + balance_by_symbol[time][symbol]
                     min_ask = min(asks_prices)
                     max_bid = max(bids_prices)
