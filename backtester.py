@@ -112,7 +112,7 @@ def process_prices(df_prices, round, time_limit) -> dict[int, TradingState]:
 
     return states
 
-def process_trades(df_trades, states: dict[int, TradingState], time_limit):
+def process_trades(df_trades, states: dict[int, TradingState], time_limit, names=True):
     for _, trade in df_trades.iterrows():
         time: int = trade['timestamp']
         if time > time_limit:
@@ -120,12 +120,13 @@ def process_trades(df_trades, states: dict[int, TradingState], time_limit):
         symbol = trade['symbol']
         if symbol not in states[time].market_trades:
             states[time].market_trades[symbol] = []
+        print(f'buyer and seller {trade["buyer"]} {trade["seller"]}')
         t = Trade(
                 symbol, 
                 trade['price'], 
                 trade['quantity'], 
-                '', #trade['buyer'], 
-                '', #trade['seller'], 
+                str(trade['buyer']), 
+                str(trade['seller']),
                 time)
         states[time].market_trades[symbol].append(t)
     return states
@@ -165,13 +166,15 @@ def calc_mid(states: dict[int, TradingState], round: int, time: int, max_time: i
 
 # Setting a high time_limit can be harder to visualize
 # print_position prints the position before! every Trader.run
-def simulate_alternative(round: int, day: int, trader, time_limit=999900, halfway=False, print_position=False):
+def simulate_alternative(round: int, day: int, trader, time_limit=999900, names=True, halfway=False, print_position=False):
     prices_path = f"{TRAINING_DATA_PREFIX}/prices_round_{round}_day_{day}.csv"
-    trades_path = f"{TRAINING_DATA_PREFIX}/trades_round_{round}_day_{day}_nn.csv"
+    trades_path = f"{TRAINING_DATA_PREFIX}/trades_round_{round}_day_{day}_wn.csv"
+    if not names:
+        trades_path = f"{TRAINING_DATA_PREFIX}/trades_round_{round}_day_{day}_nn.csv"
     df_prices = pd.read_csv(prices_path, sep=';')
-    df_trades = pd.read_csv(trades_path, sep=';')
+    df_trades = pd.read_csv(trades_path, sep=';', dtype={ 'seller': str, 'buyer': str })
     states = process_prices(df_prices, round, time_limit)
-    states = process_trades(df_trades, states, time_limit)
+    states = process_trades(df_trades, states, time_limit, names)
     position = copy.copy(states[0].position)
     ref_symbols = list(states[0].position.keys())
     max_time = max(list(states.keys()))
@@ -251,7 +254,7 @@ def simulate_alternative(round: int, day: int, trader, time_limit=999900, halfwa
     create_log_file(round, day, states, profits_by_symbol, balance_by_symbol, trader)
     if hasattr(trader, 'after_last_round'):
         if callable(trader.after_last_round):
-            trader.after_last_round()
+            trader.after_last_round(profits_by_symbol, balance_by_symbol)
 
 def liquidate_leftovers(position: dict[Product, Position], profits_by_symbol: dict[int, dict[str, float]], credit_by_symbol: dict[int, dict[str, float]], state: TradingState, time: int):
         liquidated_position = copy.deepcopy(position)
@@ -313,6 +316,9 @@ def clear_order_book(trader_orders: dict[str, List[Order]], order_depth: dict[st
                             min_ask = min(asks)
                             if order.price <= statistics.median([max_bid, min_ask]):
                                 trades.append(Trade(symbol, order.price, order.quantity, "BOT", "YOU", time))
+                            else:
+                                print(f'No matches for order {order} at time {time}')
+                                print(f'Order depth is {order_depth[order.symbol].__dict__}')
                         else:
                             potential_matches = list(filter(lambda o: o[0] == order.price, symbol_order_depth.buy_orders.items()))
                             if len(potential_matches) > 0:
@@ -324,6 +330,9 @@ def clear_order_book(trader_orders: dict[str, List[Order]], order_depth: dict[st
                                     #this should be negative
                                     final_volume = -match[1]
                                 trades.append(Trade(symbol, order.price, final_volume, "BOT", "YOU", time))
+                            else:
+                                print(f'No matches for order {order} at time {time}')
+                                print(f'Order depth is {order_depth[order.symbol].__dict__}')
                     if order.quantity > 0:
                         if halfway:
                             bids = symbol_order_depth.buy_orders.keys()
@@ -332,6 +341,9 @@ def clear_order_book(trader_orders: dict[str, List[Order]], order_depth: dict[st
                             min_ask = min(asks)
                             if order.price >= statistics.median([max_bid, min_ask]):
                                 trades.append(Trade(symbol, order.price, order.quantity, "YOU", "BOT", time))
+                            else:
+                                print(f'No matches for order {order} at time {time}')
+                                print(f'Order depth is {order_depth[order.symbol].__dict__}')
                         else:
                             potential_matches = list(filter(lambda o: o[0] == order.price, symbol_order_depth.sell_orders.items()))
                             if len(potential_matches) > 0:
@@ -343,6 +355,9 @@ def clear_order_book(trader_orders: dict[str, List[Order]], order_depth: dict[st
                                 else:
                                     final_volume = abs(match[1])
                                 trades.append(Trade(symbol, order.price, final_volume, "YOU", "BOT", time))
+                            else:
+                                print(f'No matches for order {order} at time {time}')
+                                print(f'Order depth is {order_depth[order.symbol].__dict__}')
         return trades
                             
 csv_header = "day;timestamp;product;bid_price_1;bid_volume_1;bid_price_2;bid_volume_2;bid_price_3;bid_volume_3;ask_price_1;ask_volume_1;ask_price_2;ask_volume_2;ask_price_3;ask_volume_3;mid_price;profit_and_loss\n"
@@ -424,18 +439,13 @@ def create_log_file(round: int, day: int, states: dict[int, TradingState], profi
 # Adjust accordingly the round and day to your needs
 if __name__ == "__main__":
     trader = Trader()
-    max_time = int(input("Input a timestamp to end (blank for 999000): ") or 999000)
+    max_time = int(input("Max timestamp (1-9)->(1-9)(00_000) or exact number): ") or 999000)
+    if max_time < 10:
+        max_time *= 100000
     round = int(input("Input a round (blank for 4): ") or 4)
     day = int(input("Input a day (blank for random): ") or random.randint(1, 3))
+    names = (not bool(input("With bot names (sth. not blank for False): "))) or True
     halfway = bool(input("Matching orders halfway (sth. not blank for True): ")) or False
-    #liqudation = bool(input("Should all positions be liquidated in the final run (sth. not blank for True): ")) or False
-    """
-    max_time = 60000
-    round = 4
-    day = 1
-    halfway = False
-    liqudation = True
-    """
     print(f"Running simulation on round {round} day {day} for time {max_time}")
     print("Remember to change the trader import")
-    simulate_alternative(round, day, trader, max_time, halfway, False)
+    simulate_alternative(round, day, trader, max_time, names, halfway, False)

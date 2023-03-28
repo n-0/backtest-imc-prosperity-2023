@@ -16,25 +16,7 @@ are cancelled. You can relax those conditions by answering sth. to `Matching ord
 of the backtester. Halfway matches any volume (regardless of order book), such that
 sell/buy orders are always matched, if they're below/above the midprice
 of the highest bid/lowest ask (regardless of volume).
-
-## Profit and Loss (PnL)
-PnL is calculated by adding the previous profit (starting from 0.0) to the value
-of all executed trades. The value of an executed trade is:
-
-```python
-current_pnl += -trade.price * trade.quantity
-```
-Meaning that if the trade was selling a symbol (e.g. Shorting) the trade.quantity is negative ,
-ending in a positive `current_pnl`. Hence buying a symbol is a positive trade.quantity, ending in a negative `current_pnl`.
-
-In the final round all open positions that the Trader still has (`position != 0`) are liquidated, giving
-for large positions a sharp spike in visualizer. They're matched against the last `OrderDepth` and take any price.
-This behavior probably deviates from IMC and can be turned off by supplying `False` as the last argument to `simulate_alternative`
-E.g.
-```python
-simulate_alternative(3, 0, trader, False, 30000, True)`
-```
-
+If an order couldn't be matched the backtester will look the current order depth and your unmatched order.
 
 ## After All
 If your trader has a method called `after_last_round`, it will be called after the logs have been written.
@@ -105,5 +87,30 @@ class Trader:
 Now calls to `self.logger.flush` will be visible in the log files and available to the visualizer.
 Thus it can also provide you diagrams about prices, volumes etc.
 A working example is given in [dontlooseshells.py](./dontlooseshells.py).
+
+
+## Profit and Loss (PnL)
+PnL is maintained via four time series
+ 
+* `profits_by_symbol` (the final pnl)
+* `balance_by_symbol:` (credit_by_symbol + unrealized_by_symbol) 
+* `credit_by_symbol:` (the amount of credit you had to take to open up the position (opposite sign of trade.quantity))
+* `unrealized_by_symbol:` (the approximated value (mid price) if you would close the position at this point in time) 
+PnL is calculated if your position of some asset is changed to 0, by a trade. Until then credit_by_symbol holds
+the amount of the previous executed trades and the amount of seashells you borrowed (both short and long require borrowing Because
+you're not trading on the profits or some initial balance of your previous competition rounds). On closing your whole position credit_by_symbol
+will only contain the pnl and is added to profits_by_symbol. This would not give you enough information to evaluate your current portfolio between trades, hence 
+the need for balance_by_symbol. For the logger file balance_by_symbol is added to profits_by_symbol, which gives similar values to the simulation. 
+Be aware that the IMC environment matches more trades, than the backtester, thus the final values might be different. But if exactly the same trades
+would be executed then both give the same results.
+
+
+The value of an executed trade is:
+```python
+current_pnl += -trade.price * trade.quantity
+```
+Meaning that if the trade was selling a symbol (e.g. Shorting) the trade.quantity is negative ,
+ending in a positive `current_pnl`. Hence buying a symbol is a positive trade.quantity, ending in a negative `current_pnl`.
+
 
 Good luck 🍀
