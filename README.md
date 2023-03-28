@@ -40,11 +40,19 @@ if __name__ == "__main__":
 The central method is `simulate_alternative`. There are some default parameters
 and the meaning is
 ```
-def simulate_alternative(round: int, day: int, trader, time_limit=999900, end_liquidation=True, halfway=False, print_position=False):
+def simulate_alternative(
+        round: int, 
+        day: int, 
+        trader, 
+        time_limit=999900, 
+        names=True, 
+        halfway=False,
+        monkeys=False,
+        monkey_names=['Max', 'Camilla']
+    ):
 ```
 where round and day are substituted to the following path `{TRAINING_DATA_PREFIX}/prices_round_{round}_day_{day}.csv` (same for `trades_round...`).
-Be careful if you're using windows, where the separator is `\`. Trader is your algorithm trader, `time_limit` can be decreased to only read a part of the full training file. `end_liquidation=False` stops the backtest from liquidating all your open positions in the last round. `halway` enables smarter order matching, `print_position` prints before every call of `Trader.run`
-the current position to the stdout
+Trader is your algorithm trader, `time_limit` can be decreased to only read a part of the full training file. `names` reads the training files with names on `market_trades`. `halfway` enables smarter order matching. The last two are a secret, that you might want to checkout for yourself.
 
 ## Logging with jmerle's visualizer
 Because the `backtester` doesn't read from the stdout nor stderr, logs produced have an empty `Submission logs:` section (still limit exceeds are printed).
