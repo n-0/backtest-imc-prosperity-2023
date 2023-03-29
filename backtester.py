@@ -249,8 +249,9 @@ def trades_position_pnl_run(
                             trades_str = ', '.join("%s: %s" % item for item in trade_vars.items())
                             print(trades_str)
                         failed_symbol.append(trade.symbol)
-                    valid_trades.append(trade) 
-                    position[trade.symbol] += trade.quantity
+                    else:
+                        valid_trades.append(trade) 
+                        position[trade.symbol] += trade.quantity
             FLEX_TIME_DELTA = TIME_DELTA
             if time == max_time:
                 FLEX_TIME_DELTA = 0
