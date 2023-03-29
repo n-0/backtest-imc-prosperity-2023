@@ -173,7 +173,7 @@ def simulate_alternative(
         names=True, 
         halfway=False,
         monkeys=False,
-        monkey_names=['Max', 'Camilla']
+        monkey_names=['Caesar', 'Camilla', 'Peter']
     ):
     prices_path = os.path.join(TRAINING_DATA_PREFIX, f'prices_round_{round}_day_{day}.csv')
     trades_path = os.path.join(TRAINING_DATA_PREFIX, f'trades_round_{round}_day_{day}_wn.csv')
@@ -195,11 +195,13 @@ def simulate_alternative(
 
     states, trader, profits_by_symbol, balance_by_symbol = trades_position_pnl_run(states, max_time, profits_by_symbol, balance_by_symbol, credit_by_symbol, unrealized_by_symbol)
     create_log_file(round, day, states, profits_by_symbol, balance_by_symbol, trader)
-    
+    profit_balance_monkeys = {}
+    trades_monkeys = {}
     if monkeys:
-        profit_balance, trades_monkey = monkey_positions(monkey_names, states, round)
-        print(f'PNL + BALANCE monkeys {profit_balance[max_time]}')
-        print(f'Trades monkeys {trades_monkey[max_time]}')
+        profit_balance_monkeys, trades_monkeys, profit_monkeys, balance_monkeys, monkey_positions_by_timestamp = monkey_positions(monkey_names, states, round)
+        print("End of monkey simulation reached.")
+        print(f'PNL + BALANCE monkeys {profit_balance_monkeys[max_time]}')
+        print(f'Trades monkeys {trades_monkeys[max_time]}')
     if hasattr(trader, 'after_last_round'):
         if callable(trader.after_last_round): #type: ignore
             trader.after_last_round(profits_by_symbol, balance_by_symbol) #type: ignore
@@ -248,11 +250,11 @@ def trades_position_pnl_run(
                             print(trades_str)
                         failed_symbol.append(trade.symbol)
                     valid_trades.append(trade) 
+                    position[trade.symbol] += trade.quantity
             FLEX_TIME_DELTA = TIME_DELTA
             if time == max_time:
                 FLEX_TIME_DELTA = 0
             for valid_trade in valid_trades:
-                    position[valid_trade.symbol] += valid_trade.quantity
                     if grouped_by_symbol.get(valid_trade.symbol) == None:
                         grouped_by_symbol[valid_trade.symbol] = []
                     grouped_by_symbol[valid_trade.symbol].append(valid_trade)
@@ -287,6 +289,8 @@ def monkey_positions(monkey_names: list[str], states: dict[int, TradingState], r
     monkey_positions: dict[str, dict[str, int]] = {}
     trades_by_round: dict[int, dict[str, list[Trade]]]  = { 0: dict(zip(monkey_names,  [[] for x in range(len(monkey_names))])) }
     profit_balance: dict[int, dict[str, dict[str, float]]] = { 0: {} }
+
+    monkey_positions_by_timestamp: dict[int, dict[str, dict[str, int]]] = {}
 
     for monkey in monkey_names:
         ref_symbols = list(states[0].position.keys())
@@ -351,12 +355,12 @@ def monkey_positions(monkey_names: list[str], states: dict[int, TradingState], r
             prev_monkey_positions[monkey] = copy.deepcopy(monkey_positions[monkey])
             monkey_positions[monkey] = position
             if time == max_time:
-                print("End of monkey simulation reached.")
                 # i have the feeling this already has been done, and only repeats the same values as before
                 for osymbol in position.keys():
                     profits_by_symbol[time + FLEX_TIME_DELTA][monkey][osymbol] += credit_by_symbol[time + FLEX_TIME_DELTA][monkey][osymbol] + unrealized_by_symbol[time + FLEX_TIME_DELTA][monkey][osymbol]
                     balance_by_symbol[time + FLEX_TIME_DELTA][monkey][osymbol] = 0
-    return profit_balance, trades_by_round
+        monkey_positions_by_timestamp[time] = copy.deepcopy(monkey_positions)
+    return profit_balance, trades_by_round, profits_by_symbol, balance_by_symbol, monkey_positions_by_timestamp
 
 
 def cleanup_order_volumes(org_orders: List[Order]) -> List[Order]:
@@ -525,4 +529,4 @@ if __name__ == "__main__":
         halfway = True
     print(f"Running simulation on round {round} day {day} for time {max_time}")
     print("Remember to change the trader import")
-    simulate_alternative(round, day, trader, max_time, names, halfway)
+    simulate_alternative(round, day, trader, max_time, names, halfway, False)
